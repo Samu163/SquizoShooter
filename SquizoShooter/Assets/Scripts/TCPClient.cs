@@ -1,12 +1,31 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Threading;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+
+
+
+public struct DTO
+{
+    public string playerName;
+    public int level;
+    public List<Pokemon> ownedPokemons;
+
+    public DTO(string playerName = "DefaultPlayer", int level = 1, List<Pokemon> ownedPokemons = null)
+    {
+        this.playerName = playerName;
+        this.level = level;
+        this.ownedPokemons = ownedPokemons ?? new List<Pokemon>();
+    }
+}
+
 
 public class TCPClient : MonoBehaviour
 {
@@ -31,6 +50,8 @@ public class TCPClient : MonoBehaviour
     private bool isConnected = false;
     private Queue<string> mainThreadActions = new Queue<string>();
 
+    private MemoryStream stream;
+
     void Start()
     {
         if (connectButton != null)
@@ -44,6 +65,43 @@ public class TCPClient : MonoBehaviour
 
         if (chatPanel != null)
             chatPanel.SetActive(false);
+
+    }
+
+    public string SerializePokemon(Pokemon pokemon)
+    {
+        string json = JsonUtility.ToJson(pokemon);
+        return json;
+    }
+
+    public string SerializeDTO(DTO data)
+    {
+
+        string json = JsonUtility.ToJson(data);
+        for (int i = 0; i < data.ownedPokemons.Count; i++)
+        {
+            json += ",";
+            json += SerializePokemon(data.ownedPokemons[i]);
+        }
+        stream = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(stream);
+        writer.Write(json);
+        return json;
+    }
+
+    void DeserializeJson()
+    {
+        var t = new DTO();
+        BinaryReader reader = new BinaryReader(stream);
+        stream.Seek(0, SeekOrigin.Begin);
+        string json = reader.ReadString();
+        Debug.Log(json);
+        t = JsonUtility.FromJson<DTO>(json);
+        Debug.Log(t.playerName.ToString() + " " + t.level.ToString());
+        for (int i = 0; i < t.ownedPokemons.Count; i++)
+        {
+            Debug.Log(t.ownedPokemons[i].name);
+        }
     }
 
     public void ConnectToServer()
@@ -178,6 +236,18 @@ public class TCPClient : MonoBehaviour
                 byte[] data = Encoding.ASCII.GetBytes(message);
                 clientSocket.Send(data);
                 chatInput.text = "";
+
+                //List<Pokemon> pokemons = new List<Pokemon>();
+                //pokemons.Add(new Pokemon { name = "Pikachu" });
+                //pokemons.Add(new Pokemon { name = "Bulbasur" });
+                //pokemons.Add(new Pokemon { name = "Charmander" });
+                //pokemons.Add(new Pokemon { name = "Starmie" });
+
+                //DTO newData = new DTO("DefaultPlayer", 1, pokemons);
+
+                //byte[] data = Encoding.ASCII.GetBytes("CHAT:" + SerializeDTO(newData));
+                //clientSocket.Send(data);
+                //chatInput.text = "";
             }
             catch (Exception e)
             {
