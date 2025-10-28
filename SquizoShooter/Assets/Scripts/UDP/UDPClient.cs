@@ -9,162 +9,298 @@ using UnityEngine;
 public class UDPClient : MonoBehaviour
 {
     [Header("Connection Settings")]
-    public string serverIP = "127.0.0.1"; // IP predeterminada
-    public int serverPort = 9050; // Puerto del servidor
-    public int clientPort = 9002; // Puerto del cliente (modificado a 9002)
+    public string serverIP = "127.0.0.1";
+    public int serverPort = 9050;
+    [Tooltip("Si pones 0, el sistema asignará un puerto automáticamente")]
+    public int clientPort = 0;
 
-    public GameObject cubePrefab; // Prefab del cubo
+    [Header("Gameplay")]
+    public GameObject cubePrefab;
 
     private Socket clientSocket;
-    private Thread receiveThread;
-    private bool isConnected = false;
     private EndPoint serverEndPoint;
-    private string clientKey; // Identificador único del cliente
-    private Dictionary<string, GameObject> playerCubes = new Dictionary<string, GameObject>(); // Almacena los cubos de todos los jugadores
+    private Thread receiveThread;
+    private volatile bool isConnected = false;
 
-    private Queue<Action> mainThreadActions = new Queue<Action>(); // Cola para manejar las instancias en el hilo principal
+    private string clientKey = null; // GUID as string
+    private readonly object cubesLock = new object();
+    private Dictionary<string, GameObject> playerCubes = new Dictionary<string, GameObject>();
 
-    public bool IsConnected { get { return isConnected; } }
+    private Queue<Action> mainThreadActions = new Queue<Action>();
+    private readonly object mainThreadLock = new object();
 
-    // Método para iniciar la conexión al servidor de forma automática
+    public bool IsConnected => isConnected;
+
+    // Llamar para iniciar conexión (desde otro script o Start)
     public void StartConnection()
     {
-        Thread connectThread = new Thread(ConnectProcess);
-        connectThread.Start();
+        Thread t = new Thread(ConnectProcess) { IsBackground = true };
+        t.Start();
     }
 
     void ConnectProcess()
     {
         try
         {
-            // Establecer el punto de conexión al servidor
             serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
+
             clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
-            // Asignar un puerto al cliente
-            IPEndPoint clientEndPoint = new IPEndPoint(IPAddress.Any, clientPort);
-            clientSocket.Bind(clientEndPoint);
+            // Bind al puerto del cliente (0 -> SO asigna puerto libre)
+            IPEndPoint localEP = new IPEndPoint(IPAddress.Any, clientPort);
+            clientSocket.Bind(localEP);
 
-            // Enviar el mensaje de "HANDSHAKE" al servidor
-            string handshake = "HANDSHAKE";
-            byte[] data = Encoding.ASCII.GetBytes(handshake);
-            clientSocket.SendTo(data, data.Length, SocketFlags.None, serverEndPoint);
+            // Opcional: establecer tiempo de bloqueo corto en Receive para permitir checks periódicos.
+            // clientSocket.ReceiveTimeout = 2000; // si lo pones, atraparás SocketException con Timeout
+
+            // Enviar handshake
+            SendRawMessage("HANDSHAKE");
 
             isConnected = true;
-            Debug.Log("Connected to server on port: " + clientPort);
+            Debug.Log($"UDP client started and bound to {(clientSocket.LocalEndPoint != null ? clientSocket.LocalEndPoint.ToString() : "unknown")}");
 
-            // Iniciar el hilo de recepción de mensajes
-            receiveThread = new Thread(ReceiveMessages);
+            // Empezar hilo de recepción
+            receiveThread = new Thread(ReceiveLoop) { IsBackground = true };
             receiveThread.Start();
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Debug.LogError("Error connecting to server: " + e.Message);
+            Debug.LogError("UDPClient ConnectProcess error: " + ex.Message);
             isConnected = false;
+            SafeEnqueueMain(() => Debug.LogError("Conexión UDP fallida: " + ex.Message));
         }
     }
 
-    void ReceiveMessages()
+    void ReceiveLoop()
     {
         byte[] buffer = new byte[4096];
+        EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
 
-        while (isConnected)
+        try
         {
-            try
+            while (isConnected)
             {
-                IPEndPoint sender = new IPEndPoint(IPAddress.Any, 0);
-                EndPoint remote = (EndPoint)sender;
-
-                // Recibir los mensajes del servidor
-                int bytesReceived = clientSocket.ReceiveFrom(buffer, ref remote);
-
-                if (bytesReceived > 0)
+                try
                 {
-                    string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
-                    Debug.Log("Received from server: " + message);
-
-                    mainThreadActions.Enqueue(() => ProcessServerMessage(message));
+                    // Blocking receive. Si cierras el socket desde otro hilo, esto lanzará una excepción y saldrás.
+                    int bytes = clientSocket.ReceiveFrom(buffer, ref remoteEP);
+                    if (bytes > 0)
+                    {
+                        string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
+                        Debug.Log($"[Client] Recibido de {remoteEP}: {msg}");
+                        // Procesar en hilo principal
+                        SafeEnqueueMain(() => ProcessServerMessage(msg));
+                    }
                 }
-            }
-            catch (Exception e)
-            {
-                if (isConnected)
+                catch (SocketException se)
                 {
-                    Debug.LogError("Error receiving message: " + e.Message);
-                    isConnected = false;
+                    // Si se está cerrando el socket, salir silenciosamente
+                    if (!isConnected)
+                        break;
+                    Debug.LogWarning("[Client] SocketException in ReceiveLoop: " + se.Message);
                 }
-                break;
+                catch (Exception e)
+                {
+                    Debug.LogError("[Client] Error en ReceiveLoop: " + e.Message);
+                    break;
+                }
             }
         }
-
-        Disconnect();
+        finally
+        {
+            // asegurar limpieza
+            Debug.Log("[Client] ReceiveLoop terminado");
+            DisconnectInternal();
+        }
     }
 
     void ProcessServerMessage(string message)
     {
         if (message.StartsWith("WELCOME:"))
         {
-            clientKey = message.Substring(8); // Obtener el clientKey del servidor
+            clientKey = message.Substring(8);
             Debug.Log("Received client key: " + clientKey);
-            SendCubeMovement(Vector3.zero); // Enviar la posición inicial del cubo
-        }
-        else if (message.StartsWith("MOVE:"))
-        {
-            string[] parts = message.Substring(5).Split(',');
-            float x = float.Parse(parts[0]);
-            float y = float.Parse(parts[1]);
-            float z = float.Parse(parts[2]);
-            Vector3 newPosition = new Vector3(x, y, z);
 
-            // Mover el cubo del jugador según la posición recibida
-            if (!playerCubes.ContainsKey(clientKey))
+            // Instanciar mi propio cubo local
+            GameObject myCube = Instantiate(cubePrefab, Vector3.zero, Quaternion.identity);
+            playerCubes[clientKey] = myCube;
+
+            // Mantener activo el script de movimiento SOLO en el local
+            CubeMovement move = myCube.GetComponent<CubeMovement>();
+            if (move != null)
+                move.enabled = true;
+
+            // Enviar mi posición inicial al servidor
+            SendCubeMovement(Vector3.zero);
+            return;
+        }
+
+        if (message.StartsWith("MOVE:"))
+        {
+            // Nuevo formato: MOVE:<key>:x,y,z
+            string[] parts = message.Split(':');
+            if (parts.Length < 3) return;
+
+            string key = parts[1];
+            string[] coords = parts[2].Split(',');
+            if (coords.Length < 3) return;
+
+            float x = float.Parse(coords[0]);
+            float y = float.Parse(coords[1]);
+            float z = float.Parse(coords[2]);
+            Vector3 newPos = new Vector3(x, y, z);
+
+            // Si es mi propio cubo, ignorar (ya se mueve localmente)
+            if (key == clientKey)
+                return;
+
+            // Si es un jugador remoto, crear/actualizar su cubo
+            if (!playerCubes.ContainsKey(key))
             {
-                mainThreadActions.Enqueue(() => InstantiateCube(newPosition, clientKey));
+                mainThreadActions.Enqueue(() => InstantiateRemoteCube(newPos, key));
             }
             else
             {
-                playerCubes[clientKey].transform.position = newPosition;
+                mainThreadActions.Enqueue(() => playerCubes[key].transform.position = newPos);
             }
         }
     }
 
-    void InstantiateCube(Vector3 position, string key)
+    void InstantiateRemoteCube(Vector3 position, string key)
     {
-        if (!playerCubes.ContainsKey(key))
+        GameObject newCube = Instantiate(cubePrefab, position, Quaternion.identity);
+
+        // Desactivar el control local
+        CubeMovement movementScript = newCube.GetComponent<CubeMovement>();
+        if (movementScript != null)
+            movementScript.enabled = false;
+
+        playerCubes[key] = newCube;
+
+        Debug.Log($"Instantiated remote cube for {key} at {position}");
+    }
+
+    void InstantiateOrMoveCube(string key, Vector3 pos)
+    {
+        lock (cubesLock)
         {
-            GameObject newCube = Instantiate(cubePrefab, position, Quaternion.identity);
-            playerCubes[key] = newCube;
-            Debug.Log("Instantiated new cube for player: " + key + " at position " + position);
-        }
-        else
-        {
-            playerCubes[key].transform.position = position;
-            Debug.Log("Updated position for existing cube: " + key);
+            if (!playerCubes.ContainsKey(key))
+            {
+                GameObject go = Instantiate(cubePrefab, pos, Quaternion.identity);
+                playerCubes[key] = go;
+                Debug.Log($"[Client] Instantiated cube for {key} at {pos}");
+            }
+            else
+            {
+                playerCubes[key].transform.position = pos;
+            }
         }
     }
 
-    public void SendCubeMovement(Vector3 movement)
+    void RemoveCube(string key)
+    {
+        lock (cubesLock)
+        {
+            if (playerCubes.TryGetValue(key, out GameObject go))
+            {
+                Destroy(go);
+                playerCubes.Remove(key);
+                Debug.Log($"[Client] Removed cube for {key}");
+            }
+        }
+    }
+
+    public void SendCubeMovement(Vector3 position)
+    {
+        if (!isConnected || clientSocket == null) return;
+        if (string.IsNullOrEmpty(clientKey))
+        {
+            // si aún no tenemos clientKey, enviar sin clave para que servidor ignore (o se puede bufferizar)
+            Debug.LogWarning("[Client] Aún no tengo clientKey, intentando enviar MOVE sin clave");
+        }
+
+        string payload = $"{clientKey}:{position.x.ToString("G9")},{position.y.ToString("G9")},{position.z.ToString("G9")}";
+        string message = "MOVE:" + payload;
+        SendRawMessage(message);
+    }
+
+    private void SendRawMessage(string message)
     {
         try
         {
-            string message = "MOVE:" + movement.x + "," + movement.y + "," + movement.z;
-            byte[] data = Encoding.ASCII.GetBytes(message);
+            if (serverEndPoint == null) serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
+            byte[] data = Encoding.UTF8.GetBytes(message);
             clientSocket.SendTo(data, data.Length, SocketFlags.None, serverEndPoint);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Debug.LogError("Error sending move data: " + e.Message);
+            Debug.LogError("[Client] Error sending message: " + ex.Message);
         }
     }
 
-    void Disconnect()
+    void SafeEnqueueMain(Action a)
     {
-        if (isConnected)
+        lock (mainThreadLock)
         {
-            isConnected = false;
-            clientSocket.Close();
-            Debug.Log("Disconnected from server");
+            mainThreadActions.Enqueue(a);
         }
+    }
+
+    void Update()
+    {
+        // ejecutar acciones en el hilo principal (instanciar cubos, mover objetos Unity, etc.)
+        while (true)
+        {
+            Action a = null;
+            lock (mainThreadLock)
+            {
+                if (mainThreadActions.Count > 0) a = mainThreadActions.Dequeue();
+            }
+            if (a == null) break;
+            try { a.Invoke(); } catch (Exception e) { Debug.LogError("[Client] Error en acción principal: " + e.Message); }
+        }
+    }
+
+    void DisconnectInternal()
+    {
+        // Llamado desde receive thread cuando termina
+        isConnected = false;
+        try
+        {
+            if (clientSocket != null)
+            {
+                clientSocket.Close(); // desbloquea Receive
+                clientSocket = null;
+            }
+        }
+        catch { }
+    }
+
+    public void Disconnect()
+    {
+        if (!isConnected) return;
+        isConnected = false;
+        try
+        {
+            // intenta notificar al servidor (opcional)
+            if (!string.IsNullOrEmpty(clientKey))
+            {
+                SendRawMessage("GOODBYE:" + clientKey);
+            }
+        }
+        catch { }
+
+        // cerrar socket para desbloquear receive
+        try { clientSocket?.Close(); } catch { }
+
+        // esperar hilo
+        if (receiveThread != null && receiveThread.IsAlive)
+        {
+            receiveThread.Join(500);
+        }
+
+        clientSocket = null;
+        Debug.Log("[Client] Disconnected");
     }
 
     void OnApplicationQuit()
@@ -172,11 +308,8 @@ public class UDPClient : MonoBehaviour
         Disconnect();
     }
 
-    void Update()
+    void OnDestroy()
     {
-        while (mainThreadActions.Count > 0)
-        {
-            mainThreadActions.Dequeue().Invoke();
-        }
+        Disconnect();
     }
 }

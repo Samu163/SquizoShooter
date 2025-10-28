@@ -9,29 +9,37 @@ public class CubeMovement : MonoBehaviour
 
     void Start()
     {
-        // Obtener la referencia al UDPClient desde GameManager (u otro objeto adecuado)
-        udpClient = GameManager.Instance.GetComponent<UDPClient>();
+        // Busca el UDPClient en escena (asegúrate de que exista un objeto con UDPClient)
+        udpClient = FindObjectOfType<UDPClient>();
+        if (udpClient == null)
+        {
+            Debug.LogWarning("No se encontró UDPClient en la escena. Asegúrate de tener un objeto con UDPClient.");
+        }
     }
 
     void Update()
     {
-        // Movimiento local con WASD
-        if (Input.GetKey(KeyCode.W)) movement += Vector3.forward * moveSpeed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.S)) movement -= Vector3.forward * moveSpeed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.A)) movement -= Vector3.right * moveSpeed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.D)) movement += Vector3.right * moveSpeed * Time.deltaTime;
+        // Movimiento local (mueve la posición absoluta usando WASD)
+        Vector3 delta = Vector3.zero;
+        if (Input.GetKey(KeyCode.W)) delta += Vector3.forward;
+        if (Input.GetKey(KeyCode.S)) delta += Vector3.back;
+        if (Input.GetKey(KeyCode.A)) delta += Vector3.left;
+        if (Input.GetKey(KeyCode.D)) delta += Vector3.right;
 
-        // Mover el cubo en la escena
-        transform.position = movement;
-
-        // Enviar la nueva posición al servidor
-        if (udpClient != null && udpClient.IsConnected)
+        if (delta != Vector3.zero)
         {
-            udpClient.SendCubeMovement(movement);
+            movement += delta * moveSpeed * Time.deltaTime;
+            transform.position = movement;
+
+            // Enviar la nueva posición al servidor si estamos conectados
+            if (udpClient != null && udpClient.IsConnected)
+            {
+                udpClient.SendCubeMovement(movement);
+            }
         }
     }
 
-    // Método para actualizar la posición del cubo desde el servidor
+    // Método que servidor/cliente puede llamar para forzar nueva posición
     public void UpdateCubePosition(Vector3 newPosition)
     {
         movement = newPosition;

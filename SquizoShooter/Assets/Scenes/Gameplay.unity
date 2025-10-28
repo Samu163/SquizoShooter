@@ -567,7 +567,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UDPClient
   serverIP: 127.0.0.1
   serverPort: 9050
-  clientPort: 9000
+  clientPort: 0
   cubePrefab: {fileID: 4377001297458088799, guid: 7aa0caffc4d73c741b5998f95171fc66, type: 3}
 --- !u!4 &2059484778
 Transform:

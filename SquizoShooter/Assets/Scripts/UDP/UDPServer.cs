@@ -1,9 +1,10 @@
-using UnityEngine;
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using UnityEngine;
 
 public class UDPServer : MonoBehaviour
 {
@@ -12,158 +13,247 @@ public class UDPServer : MonoBehaviour
 
     private Socket serverSocket;
     private Thread receiveThread;
-    private bool isRunning = false;
+    private volatile bool isRunning = false;
 
-    private Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>(); // Almacena las posiciones de los jugadores
-    private Dictionary<string, EndPoint> connectedClients = new Dictionary<string, EndPoint>(); // Almacena los clientes conectados
+    // clientKey -> endpoint
+    private readonly Dictionary<string, EndPoint> connectedClients = new Dictionary<string, EndPoint>();
+    private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
+    private readonly object clientsLock = new object();
+
+    void Start()
+    {
+        // Puedes arrancar el servidor desde Start si quieres:
+        // StartServer();
+    }
 
     public void StartServer()
     {
         try
         {
             serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            IPEndPoint ipep = new IPEndPoint(IPAddress.Any, port);  // Mantén el puerto como único (9050)
+            IPEndPoint ipep = new IPEndPoint(IPAddress.Any, port);
             serverSocket.Bind(ipep);
 
             isRunning = true;
-            Debug.Log("UDP Server started on port " + port);
-
-            // Iniciar el hilo para recibir mensajes
-            receiveThread = new Thread(ReceiveMessages);
+            receiveThread = new Thread(ReceiveLoop) { IsBackground = true };
             receiveThread.Start();
+
+            Debug.Log("[Server] UDP server started on port " + port);
         }
-        catch (System.Exception e)
+        catch (Exception ex)
         {
-            Debug.LogError("Error starting server: " + e.Message);
+            Debug.LogError("[Server] Error starting UDP server: " + ex.Message);
         }
     }
 
-    void ReceiveMessages()
+    void ReceiveLoop()
     {
         byte[] buffer = new byte[4096];
+        EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
 
-        while (isRunning)
+        try
         {
-            try
+            while (isRunning)
             {
-                IPEndPoint sender = new IPEndPoint(IPAddress.Any, 0);
-                EndPoint remote = (EndPoint)sender;
-
-                int bytesReceived = serverSocket.ReceiveFrom(buffer, ref remote);
-
-                if (bytesReceived > 0)
+                try
                 {
-                    string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
-                    Debug.Log("Received from " + remote.ToString() + ": " + message);
-
-                    ProcessClientMessage(message, remote);
+                    int bytes = serverSocket.ReceiveFrom(buffer, ref remoteEP); // blocking
+                    if (bytes > 0)
+                    {
+                        string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
+                        Debug.Log($"[Server] Recibido de {remoteEP}: {msg}");
+                        ProcessClientMessage(msg, remoteEP);
+                    }
+                }
+                catch (SocketException se)
+                {
+                    if (!isRunning) break;
+                    Debug.LogWarning("[Server] SocketException en ReceiveLoop: " + se.Message);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError("[Server] Error en ReceiveLoop: " + e.Message);
                 }
             }
-            catch (System.Exception e)
-            {
-                Debug.LogError("Error receiving UDP message: " + e.Message);
-            }
+        }
+        finally
+        {
+            Debug.Log("[Server] ReceiveLoop terminado");
         }
     }
 
     void ProcessClientMessage(string message, EndPoint remote)
     {
-        string clientKey = remote.ToString();
+        if (string.IsNullOrEmpty(message)) return;
 
         if (message == "HANDSHAKE")
         {
-            if (!connectedClients.ContainsKey(clientKey))
-            {
-                connectedClients[clientKey] = remote;
-                playerPositions[clientKey] = Vector3.zero;
+            string newKey = Guid.NewGuid().ToString();
 
-                SendWelcomeMessage(remote, clientKey);
-                SendAllPlayerPositions(remote); // Enviar posiciones de todos los jugadores al nuevo cliente
+            lock (clientsLock)
+            {
+                connectedClients[newKey] = remote;
+                playerPositions[newKey] = Vector3.zero;
             }
+
+            SendMessageToClient($"WELCOME:{newKey}", remote);
+
+            SendAllPlayerPositionsToSingleClient(newKey, remote);
+
+            BroadcastMove(newKey, playerPositions[newKey]);
         }
         else if (message.StartsWith("MOVE:"))
         {
-            string[] parts = message.Substring(5).Split(',');
-            float x = float.Parse(parts[0]);
-            float y = float.Parse(parts[1]);
-            float z = float.Parse(parts[2]);
+            // Formato: MOVE:<clientKey>:x,y,z
+            string payload = message.Substring("MOVE:".Length);
+            int sep = payload.IndexOf(':');
+            if (sep < 0) return;
+            string senderKey = payload.Substring(0, sep);
+            string coords = payload.Substring(sep + 1);
+            string[] parts = coords.Split(',');
+            if (parts.Length != 3) return;
 
-            if (playerPositions.ContainsKey(clientKey))
+            if (float.TryParse(parts[0], out float x) &&
+                float.TryParse(parts[1], out float y) &&
+                float.TryParse(parts[2], out float z))
             {
-                playerPositions[clientKey] = new Vector3(x, y, z);
-                BroadcastCubePositions(); // Difundir las nuevas posiciones a todos los clientes
+                Vector3 newPos = new Vector3(x, y, z);
+                lock (clientsLock)
+                {
+                    if (playerPositions.ContainsKey(senderKey))
+                    {
+                        playerPositions[senderKey] = newPos;
+                    }
+                    else
+                    {
+                        // si no estaba registrado, registrar con el endpoint actual
+                        connectedClients[senderKey] = remote;
+                        playerPositions[senderKey] = newPos;
+                    }
+                }
+                // Difundir el movimiento a todos
+                BroadcastMove(senderKey, newPos);
+            }
+        }
+        else if (message.StartsWith("GOODBYE:"))
+        {
+            string key = message.Substring("GOODBYE:".Length);
+            RemoveClientByKey(key);
+        }
+        else
+        {
+            Debug.LogWarning("[Server] Mensaje desconocido: " + message);
+        }
+    }
+
+    void SendAllPlayerPositionsToSingleClient(string newKey, EndPoint remote)
+    {
+        lock (clientsLock)
+        {
+            foreach (var kv in playerPositions)
+            {
+                string key = kv.Key;
+                Vector3 pos = kv.Value;
+                // enviar MOVE:<key>:x,y,z
+                string msg = $"MOVE:{key}:{pos.x.ToString("G9")},{pos.y.ToString("G9")},{pos.z.ToString("G9")}";
+                SendMessageToClient(msg, remote);
             }
         }
     }
 
-    void SendAllPlayerPositions(EndPoint client)
+    void BroadcastCubePositions()
     {
-        Debug.Log("Sending all player positions to new client.");
-        foreach (var player in playerPositions)
+        foreach (var receiver in connectedClients)
         {
-            // Enviar la posición de cada jugador al nuevo cliente
-            string message = "MOVE:" + player.Value.x + "," + player.Value.y + "," + player.Value.z;
-            SendMessageToClient(message, client);
-            Debug.Log($"Sent position {player.Value} of player {player.Key} to new client.");
+            foreach (var player in playerPositions)
+            {
+                string message = $"MOVE:{player.Key}:{player.Value.x},{player.Value.y},{player.Value.z}";
+                byte[] data = Encoding.ASCII.GetBytes(message);
+                serverSocket.SendTo(data, data.Length, SocketFlags.None, receiver.Value);
+            }
         }
     }
 
-    void SendWelcomeMessage(EndPoint remote, string clientKey)
+    void BroadcastMove(string senderKey, Vector3 pos)
     {
-        string welcomeMsg = "WELCOME:" + clientKey; // Enviar el clientKey al cliente
-        SendMessageToClient(welcomeMsg, remote);
+        string msg = $"MOVE:{senderKey}:{pos.x.ToString("G9")},{pos.y.ToString("G9")},{pos.z.ToString("G9")}";
+        byte[] data = Encoding.UTF8.GetBytes(msg);
+
+        // Snapshot para iterar sin bloquear long time
+        List<EndPoint> snapshot = new List<EndPoint>();
+        lock (clientsLock)
+        {
+            foreach (var kv in connectedClients) snapshot.Add(kv.Value);
+        }
+
+        foreach (var ep in snapshot)
+        {
+            try
+            {
+                serverSocket.SendTo(data, data.Length, SocketFlags.None, ep);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Server] Error enviando MOVE a " + ep + ": " + e.Message);
+            }
+        }
     }
 
     void SendMessageToClient(string message, EndPoint remote)
     {
         try
         {
-            byte[] data = Encoding.ASCII.GetBytes(message);
+            byte[] data = Encoding.UTF8.GetBytes(message);
             serverSocket.SendTo(data, data.Length, SocketFlags.None, remote);
-            Debug.Log("Message sent to client: " + message);
         }
-        catch (System.Exception e)
+        catch (Exception e)
         {
-            Debug.LogError("Error sending message to client: " + e.Message);
+            Debug.LogError("[Server] Error enviando a cliente: " + e.Message);
         }
     }
 
-    void BroadcastCubePositions()
+    void RemoveClientByKey(string key)
     {
-        // Difundir las posiciones de todos los jugadores conectados a todos los clientes
-        foreach (var client in connectedClients)
+        lock (clientsLock)
         {
-            // Crear el mensaje con la nueva posición de este jugador
-            string message = "MOVE:" + playerPositions[client.Key].x + "," + playerPositions[client.Key].y + "," + playerPositions[client.Key].z;
-            byte[] data = Encoding.ASCII.GetBytes(message);
-
-            try
+            if (connectedClients.ContainsKey(key))
             {
-                serverSocket.SendTo(data, data.Length, SocketFlags.None, client.Value);
+                connectedClients.Remove(key);
             }
-            catch (System.Exception e)
+            if (playerPositions.ContainsKey(key))
             {
-                Debug.LogError("Error broadcasting to client: " + e.Message);
+                playerPositions.Remove(key);
             }
         }
+
+        // Notificar a los demás
+        string goodbyeMsg = "GOODBYE:" + key;
+        byte[] data = Encoding.UTF8.GetBytes(goodbyeMsg);
+        List<EndPoint> snapshot;
+        lock (clientsLock)
+        {
+            snapshot = new List<EndPoint>(connectedClients.Values);
+        }
+        foreach (var ep in snapshot)
+        {
+            try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
+            catch { }
+        }
+    }
+
+    public void StopServer()
+    {
+        isRunning = false;
+        try { serverSocket?.Close(); } catch { }
+        if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
+        serverSocket = null;
+        Debug.Log("[Server] Stopped");
     }
 
     void OnDestroy()
     {
         isRunning = false;
-
-        if (serverSocket != null)
-        {
-            try
-            {
-                serverSocket.Close();
-            }
-            catch { }
-        }
-
-        if (receiveThread != null && receiveThread.IsAlive)
-        {
-            receiveThread.Abort();
-        }
+        try { serverSocket?.Close(); } catch { }
+        if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
     }
 }
