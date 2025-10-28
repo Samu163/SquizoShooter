@@ -4,22 +4,22 @@ public class CubeMovement : MonoBehaviour
 {
     private Vector3 movement = Vector3.zero;
     private float moveSpeed = 5f;
-
     private UDPClient udpClient;
+
+    private bool isLocalPlayer = false;
 
     void Start()
     {
-        // Busca el UDPClient en escena (asegúrate de que exista un objeto con UDPClient)
         udpClient = FindObjectOfType<UDPClient>();
-        if (udpClient == null)
-        {
-            Debug.LogWarning("No se encontró UDPClient en la escena. Asegúrate de tener un objeto con UDPClient.");
-        }
+
+        // Inicializar movement con la posición actual
+        movement = transform.position;
     }
 
     void Update()
     {
-        // Movimiento local (mueve la posición absoluta usando WASD)
+        if (!isLocalPlayer) return;
+
         Vector3 delta = Vector3.zero;
         if (Input.GetKey(KeyCode.W)) delta += Vector3.forward;
         if (Input.GetKey(KeyCode.S)) delta += Vector3.back;
@@ -31,7 +31,7 @@ public class CubeMovement : MonoBehaviour
             movement += delta * moveSpeed * Time.deltaTime;
             transform.position = movement;
 
-            // Enviar la nueva posición al servidor si estamos conectados
+            // Enviar la nueva posición al servidor
             if (udpClient != null && udpClient.IsConnected)
             {
                 udpClient.SendCubeMovement(movement);
@@ -39,10 +39,15 @@ public class CubeMovement : MonoBehaviour
         }
     }
 
-    // Método que servidor/cliente puede llamar para forzar nueva posición
+    // Método para actualizar posición desde red
     public void UpdateCubePosition(Vector3 newPosition)
     {
         movement = newPosition;
         transform.position = newPosition;
+    }
+
+    public void SetAsLocalPlayer(bool isLocal)
+    {
+        isLocalPlayer = isLocal;
     }
 }

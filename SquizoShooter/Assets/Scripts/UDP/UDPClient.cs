@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using UnityEngine;
+using System.Globalization;
 
 public class UDPClient : MonoBehaviour
 {
@@ -22,7 +23,7 @@ public class UDPClient : MonoBehaviour
     private Thread receiveThread;
     private volatile bool isConnected = false;
 
-    private string clientKey = null; // GUID as string
+    private string clientKey = null;
     private readonly object cubesLock = new object();
     private Dictionary<string, GameObject> playerCubes = new Dictionary<string, GameObject>();
 
@@ -31,7 +32,6 @@ public class UDPClient : MonoBehaviour
 
     public bool IsConnected => isConnected;
 
-    // Llamar para iniciar conexión (desde otro script o Start)
     public void StartConnection()
     {
         Thread t = new Thread(ConnectProcess) { IsBackground = true };
@@ -43,23 +43,16 @@ public class UDPClient : MonoBehaviour
         try
         {
             serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
-
             clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
-            // Bind al puerto del cliente (0 -> SO asigna puerto libre)
             IPEndPoint localEP = new IPEndPoint(IPAddress.Any, clientPort);
             clientSocket.Bind(localEP);
 
-            // Opcional: establecer tiempo de bloqueo corto en Receive para permitir checks periódicos.
-            // clientSocket.ReceiveTimeout = 2000; // si lo pones, atraparás SocketException con Timeout
-
-            // Enviar handshake
             SendRawMessage("HANDSHAKE");
 
             isConnected = true;
-            Debug.Log($"UDP client started and bound to {(clientSocket.LocalEndPoint != null ? clientSocket.LocalEndPoint.ToString() : "unknown")}");
+            Debug.Log($"UDP client started and bound to {clientSocket.LocalEndPoint}");
 
-            // Empezar hilo de recepción
             receiveThread = new Thread(ReceiveLoop) { IsBackground = true };
             receiveThread.Start();
         }
@@ -67,7 +60,6 @@ public class UDPClient : MonoBehaviour
         {
             Debug.LogError("UDPClient ConnectProcess error: " + ex.Message);
             isConnected = false;
-            SafeEnqueueMain(() => Debug.LogError("Conexión UDP fallida: " + ex.Message));
         }
     }
 
@@ -82,22 +74,18 @@ public class UDPClient : MonoBehaviour
             {
                 try
                 {
-                    // Blocking receive. Si cierras el socket desde otro hilo, esto lanzará una excepción y saldrás.
                     int bytes = clientSocket.ReceiveFrom(buffer, ref remoteEP);
                     if (bytes > 0)
                     {
                         string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
-                        Debug.Log($"[Client] Recibido de {remoteEP}: {msg}");
-                        // Procesar en hilo principal
+                        Debug.Log($"[Client] Recibido: {msg}");
                         SafeEnqueueMain(() => ProcessServerMessage(msg));
                     }
                 }
                 catch (SocketException se)
                 {
-                    // Si se está cerrando el socket, salir silenciosamente
-                    if (!isConnected)
-                        break;
-                    Debug.LogWarning("[Client] SocketException in ReceiveLoop: " + se.Message);
+                    if (!isConnected) break;
+                    Debug.LogWarning("[Client] SocketException: " + se.Message);
                 }
                 catch (Exception e)
                 {
@@ -108,7 +96,6 @@ public class UDPClient : MonoBehaviour
         }
         finally
         {
-            // asegurar limpieza
             Debug.Log("[Client] ReceiveLoop terminado");
             DisconnectInternal();
         }
@@ -121,80 +108,117 @@ public class UDPClient : MonoBehaviour
             clientKey = message.Substring(8);
             Debug.Log("Received client key: " + clientKey);
 
-            // Instanciar mi propio cubo local
+            // Instanciar cubo local
             GameObject myCube = Instantiate(cubePrefab, Vector3.zero, Quaternion.identity);
-            playerCubes[clientKey] = myCube;
 
-            // Mantener activo el script de movimiento SOLO en el local
+            lock (cubesLock)
+            {
+                playerCubes[clientKey] = myCube;
+            }
+
+            // Marcar como jugador local y habilitar movimiento
             CubeMovement move = myCube.GetComponent<CubeMovement>();
             if (move != null)
+            {
+                move.SetAsLocalPlayer(true);
                 move.enabled = true;
+            }
 
-            // Enviar mi posición inicial al servidor
+            // Enviar posición inicial
             SendCubeMovement(Vector3.zero);
             return;
         }
 
         if (message.StartsWith("MOVE:"))
         {
-            // Nuevo formato: MOVE:<key>:x,y,z
+            // Formato: MOVE:<key>:x;y;z (usando punto y coma como separador)
             string[] parts = message.Split(':');
-            if (parts.Length < 3) return;
+            if (parts.Length < 3)
+            {
+                Debug.LogWarning($"[Client] MOVE mal formateado: {message}");
+                return;
+            }
 
             string key = parts[1];
-            string[] coords = parts[2].Split(',');
-            if (coords.Length < 3) return;
+            string[] coords = parts[2].Split(';');
+            if (coords.Length < 3)
+            {
+                Debug.LogWarning($"[Client] Coordenadas incompletas: {parts[2]}");
+                return;
+            }
 
-            float x = float.Parse(coords[0]);
-            float y = float.Parse(coords[1]);
-            float z = float.Parse(coords[2]);
+            // Usar InvariantCulture para parsear con punto decimal
+            if (!float.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
+                !float.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
+                !float.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
+            {
+                Debug.LogWarning($"[Client] Error parseando coordenadas: {parts[2]}");
+                return;
+            }
+
             Vector3 newPos = new Vector3(x, y, z);
 
-            // Si es mi propio cubo, ignorar (ya se mueve localmente)
+            // Ignorar mi propio movimiento
             if (key == clientKey)
                 return;
 
-            // Si es un jugador remoto, crear/actualizar su cubo
-            if (!playerCubes.ContainsKey(key))
+            // Actualizar o crear cubo remoto (todo en el hilo principal)
+            SafeEnqueueMain(() =>
             {
-                mainThreadActions.Enqueue(() => InstantiateRemoteCube(newPos, key));
-            }
-            else
-            {
-                mainThreadActions.Enqueue(() => playerCubes[key].transform.position = newPos);
-            }
+                lock (cubesLock)
+                {
+                    if (!playerCubes.ContainsKey(key))
+                    {
+                        // Crear nuevo cubo remoto
+                        InstantiateRemoteCube(key, newPos);
+                    }
+                    else
+                    {
+                        // Actualizar posición existente
+                        GameObject cube = playerCubes[key];
+                        if (cube != null)
+                        {
+                            CubeMovement move = cube.GetComponent<CubeMovement>();
+                            if (move != null)
+                            {
+                                move.UpdateCubePosition(newPos);
+                            }
+                            else
+                            {
+                                cube.transform.position = newPos;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        if (message.StartsWith("GOODBYE:"))
+        {
+            string key = message.Substring(8);
+            SafeEnqueueMain(() => RemoveCube(key));
         }
     }
 
-    void InstantiateRemoteCube(Vector3 position, string key)
+    void InstantiateRemoteCube(string key, Vector3 position)
     {
         GameObject newCube = Instantiate(cubePrefab, position, Quaternion.identity);
 
-        // Desactivar el control local
+        // Desactivar control local
         CubeMovement movementScript = newCube.GetComponent<CubeMovement>();
         if (movementScript != null)
-            movementScript.enabled = false;
+        {
+            movementScript.SetAsLocalPlayer(false);
+            movementScript.enabled = true;
+            movementScript.UpdateCubePosition(position);
+        }
 
-        playerCubes[key] = newCube;
-
-        Debug.Log($"Instantiated remote cube for {key} at {position}");
-    }
-
-    void InstantiateOrMoveCube(string key, Vector3 pos)
-    {
         lock (cubesLock)
         {
-            if (!playerCubes.ContainsKey(key))
-            {
-                GameObject go = Instantiate(cubePrefab, pos, Quaternion.identity);
-                playerCubes[key] = go;
-                Debug.Log($"[Client] Instantiated cube for {key} at {pos}");
-            }
-            else
-            {
-                playerCubes[key].transform.position = pos;
-            }
+            playerCubes[key] = newCube;
         }
+
+        Debug.Log($"[Client] Cubo remoto creado para {key} en {position}");
     }
 
     void RemoveCube(string key)
@@ -205,7 +229,7 @@ public class UDPClient : MonoBehaviour
             {
                 Destroy(go);
                 playerCubes.Remove(key);
-                Debug.Log($"[Client] Removed cube for {key}");
+                Debug.Log($"[Client] Cubo removido: {key}");
             }
         }
     }
@@ -215,11 +239,14 @@ public class UDPClient : MonoBehaviour
         if (!isConnected || clientSocket == null) return;
         if (string.IsNullOrEmpty(clientKey))
         {
-            // si aún no tenemos clientKey, enviar sin clave para que servidor ignore (o se puede bufferizar)
-            Debug.LogWarning("[Client] Aún no tengo clientKey, intentando enviar MOVE sin clave");
+            Debug.LogWarning("[Client] No tengo clientKey todavía");
+            return;
         }
 
-        string payload = $"{clientKey}:{position.x.ToString("G9")},{position.y.ToString("G9")},{position.z.ToString("G9")}";
+        // Usar InvariantCulture para formatear con punto decimal y punto y coma como separador
+        string posStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
+                                      position.x, position.y, position.z);
+        string payload = $"{clientKey}:{posStr}";
         string message = "MOVE:" + payload;
         SendRawMessage(message);
     }
@@ -228,13 +255,15 @@ public class UDPClient : MonoBehaviour
     {
         try
         {
-            if (serverEndPoint == null) serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
+            if (serverEndPoint == null)
+                serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
+
             byte[] data = Encoding.UTF8.GetBytes(message);
             clientSocket.SendTo(data, data.Length, SocketFlags.None, serverEndPoint);
         }
         catch (Exception ex)
         {
-            Debug.LogError("[Client] Error sending message: " + ex.Message);
+            Debug.LogError("[Client] Error enviando mensaje: " + ex.Message);
         }
     }
 
@@ -248,28 +277,36 @@ public class UDPClient : MonoBehaviour
 
     void Update()
     {
-        // ejecutar acciones en el hilo principal (instanciar cubos, mover objetos Unity, etc.)
+        // Ejecutar acciones en el hilo principal
         while (true)
         {
             Action a = null;
             lock (mainThreadLock)
             {
-                if (mainThreadActions.Count > 0) a = mainThreadActions.Dequeue();
+                if (mainThreadActions.Count > 0)
+                    a = mainThreadActions.Dequeue();
             }
             if (a == null) break;
-            try { a.Invoke(); } catch (Exception e) { Debug.LogError("[Client] Error en acción principal: " + e.Message); }
+
+            try
+            {
+                a.Invoke();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[Client] Error ejecutando acción: " + e.Message);
+            }
         }
     }
 
     void DisconnectInternal()
     {
-        // Llamado desde receive thread cuando termina
         isConnected = false;
         try
         {
             if (clientSocket != null)
             {
-                clientSocket.Close(); // desbloquea Receive
+                clientSocket.Close();
                 clientSocket = null;
             }
         }
@@ -280,9 +317,9 @@ public class UDPClient : MonoBehaviour
     {
         if (!isConnected) return;
         isConnected = false;
+
         try
         {
-            // intenta notificar al servidor (opcional)
             if (!string.IsNullOrEmpty(clientKey))
             {
                 SendRawMessage("GOODBYE:" + clientKey);
@@ -290,17 +327,15 @@ public class UDPClient : MonoBehaviour
         }
         catch { }
 
-        // cerrar socket para desbloquear receive
         try { clientSocket?.Close(); } catch { }
 
-        // esperar hilo
         if (receiveThread != null && receiveThread.IsAlive)
         {
             receiveThread.Join(500);
         }
 
         clientSocket = null;
-        Debug.Log("[Client] Disconnected");
+        Debug.Log("[Client] Desconectado");
     }
 
     void OnApplicationQuit()

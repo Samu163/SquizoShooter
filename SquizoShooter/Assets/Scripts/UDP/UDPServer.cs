@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using UnityEngine;
+using System.Globalization;
 
 public class UDPServer : MonoBehaviour
 {
@@ -15,16 +16,9 @@ public class UDPServer : MonoBehaviour
     private Thread receiveThread;
     private volatile bool isRunning = false;
 
-    // clientKey -> endpoint
     private readonly Dictionary<string, EndPoint> connectedClients = new Dictionary<string, EndPoint>();
     private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
     private readonly object clientsLock = new object();
-
-    void Start()
-    {
-        // Puedes arrancar el servidor desde Start si quieres:
-        // StartServer();
-    }
 
     public void StartServer()
     {
@@ -57,7 +51,7 @@ public class UDPServer : MonoBehaviour
             {
                 try
                 {
-                    int bytes = serverSocket.ReceiveFrom(buffer, ref remoteEP); // blocking
+                    int bytes = serverSocket.ReceiveFrom(buffer, ref remoteEP);
                     if (bytes > 0)
                     {
                         string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
@@ -98,24 +92,36 @@ public class UDPServer : MonoBehaviour
 
             SendMessageToClient($"WELCOME:{newKey}", remote);
 
+            // Enviar posiciones de todos los jugadores existentes al nuevo cliente
             SendAllPlayerPositionsToSingleClient(newKey, remote);
 
-            BroadcastMove(newKey, playerPositions[newKey]);
+            // Notificar a todos sobre el nuevo jugador
+            BroadcastMove(newKey, Vector3.zero);
         }
         else if (message.StartsWith("MOVE:"))
         {
-            // Formato: MOVE:<clientKey>:x,y,z
+            // Formato: MOVE:<clientKey>:x;y;z
             string payload = message.Substring("MOVE:".Length);
             int sep = payload.IndexOf(':');
-            if (sep < 0) return;
+            if (sep < 0)
+            {
+                Debug.LogWarning($"[Server] MOVE mal formateado: {message}");
+                return;
+            }
+
             string senderKey = payload.Substring(0, sep);
             string coords = payload.Substring(sep + 1);
-            string[] parts = coords.Split(',');
-            if (parts.Length != 3) return;
+            string[] parts = coords.Split(';');
+            if (parts.Length != 3)
+            {
+                Debug.LogWarning($"[Server] Coordenadas incompletas: {coords}");
+                return;
+            }
 
-            if (float.TryParse(parts[0], out float x) &&
-                float.TryParse(parts[1], out float y) &&
-                float.TryParse(parts[2], out float z))
+            // Usar InvariantCulture para parsear con punto decimal
+            if (float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) &&
+                float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) &&
+                float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
             {
                 Vector3 newPos = new Vector3(x, y, z);
                 lock (clientsLock)
@@ -126,13 +132,17 @@ public class UDPServer : MonoBehaviour
                     }
                     else
                     {
-                        // si no estaba registrado, registrar con el endpoint actual
                         connectedClients[senderKey] = remote;
                         playerPositions[senderKey] = newPos;
                     }
                 }
-                // Difundir el movimiento a todos
+
+                Debug.Log($"[Server] Actualizando posición de {senderKey}: {newPos}");
                 BroadcastMove(senderKey, newPos);
+            }
+            else
+            {
+                Debug.LogWarning($"[Server] Error parseando coordenadas: {coords}");
             }
         }
         else if (message.StartsWith("GOODBYE:"))
@@ -153,37 +163,40 @@ public class UDPServer : MonoBehaviour
             foreach (var kv in playerPositions)
             {
                 string key = kv.Key;
-                Vector3 pos = kv.Value;
-                // enviar MOVE:<key>:x,y,z
-                string msg = $"MOVE:{key}:{pos.x.ToString("G9")},{pos.y.ToString("G9")},{pos.z.ToString("G9")}";
-                SendMessageToClient(msg, remote);
-            }
-        }
-    }
 
-    void BroadcastCubePositions()
-    {
-        foreach (var receiver in connectedClients)
-        {
-            foreach (var player in playerPositions)
-            {
-                string message = $"MOVE:{player.Key}:{player.Value.x},{player.Value.y},{player.Value.z}";
-                byte[] data = Encoding.ASCII.GetBytes(message);
-                serverSocket.SendTo(data, data.Length, SocketFlags.None, receiver.Value);
+                // No enviar al nuevo cliente su propia posición
+                if (key == newKey)
+                    continue;
+
+                Vector3 pos = kv.Value;
+
+                // Usar InvariantCulture para formatear con punto decimal
+                string posStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
+                                             pos.x, pos.y, pos.z);
+                string msg = $"MOVE:{key}:{posStr}";
+                SendMessageToClient(msg, remote);
+
+                // Pequeño delay para evitar que lleguen todos los mensajes a la vez
+                Thread.Sleep(5);
             }
         }
+
+        Debug.Log($"[Server] Enviadas {playerPositions.Count - 1} posiciones al cliente {newKey}");
     }
 
     void BroadcastMove(string senderKey, Vector3 pos)
     {
-        string msg = $"MOVE:{senderKey}:{pos.x.ToString("G9")},{pos.y.ToString("G9")},{pos.z.ToString("G9")}";
+        // Usar InvariantCulture para formatear con punto decimal
+        string posStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
+                                     pos.x, pos.y, pos.z);
+        string msg = $"MOVE:{senderKey}:{posStr}";
         byte[] data = Encoding.UTF8.GetBytes(msg);
 
-        // Snapshot para iterar sin bloquear long time
         List<EndPoint> snapshot = new List<EndPoint>();
         lock (clientsLock)
         {
-            foreach (var kv in connectedClients) snapshot.Add(kv.Value);
+            foreach (var kv in connectedClients)
+                snapshot.Add(kv.Value);
         }
 
         foreach (var ep in snapshot)
@@ -226,7 +239,6 @@ public class UDPServer : MonoBehaviour
             }
         }
 
-        // Notificar a los demás
         string goodbyeMsg = "GOODBYE:" + key;
         byte[] data = Encoding.UTF8.GetBytes(goodbyeMsg);
         List<EndPoint> snapshot;
@@ -239,6 +251,8 @@ public class UDPServer : MonoBehaviour
             try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
             catch { }
         }
+
+        Debug.Log($"[Server] Cliente {key} desconectado");
     }
 
     public void StopServer()
