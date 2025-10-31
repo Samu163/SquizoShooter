@@ -1,48 +1,77 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class CubeMovement : MonoBehaviour
 {
-    private Vector3 movement = Vector3.zero;
-    private float moveSpeed = 5f;
-    private UDPClient udpClient;
+    [Header("Movement Settings")]
+    public float moveSpeed = 5f;
+    public float sprintMultiplier = 1.5f;
+    public float jumpForce = 5f;
+    public LayerMask groundMask;
+    public float groundCheckDistance = 0.1f;
 
+    private Rigidbody rb;
+    private UDPClient udpClient;
     private bool isLocalPlayer = false;
+    private bool isGrounded = false;
 
     void Start()
     {
+        rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true; 
         udpClient = FindObjectOfType<UDPClient>();
-
-        // Inicializar movement con la posición actual
-        movement = transform.position;
     }
 
     void Update()
     {
         if (!isLocalPlayer) return;
 
-        Vector3 delta = Vector3.zero;
-        if (Input.GetKey(KeyCode.W)) delta += Vector3.forward;
-        if (Input.GetKey(KeyCode.S)) delta += Vector3.back;
-        if (Input.GetKey(KeyCode.A)) delta += Vector3.left;
-        if (Input.GetKey(KeyCode.D)) delta += Vector3.right;
+        HandleMovement();
+        HandleJump();
+        SendPositionToServer();
+    }
 
-        if (delta != Vector3.zero)
+    private void HandleMovement()
+    {
+        float moveX = 0f;
+        float moveZ = 0f;
+
+        if (Input.GetKey(KeyCode.W)) moveZ += 1f;
+        if (Input.GetKey(KeyCode.S)) moveZ -= 1f;
+        if (Input.GetKey(KeyCode.A)) moveX -= 1f;
+        if (Input.GetKey(KeyCode.D)) moveX += 1f;
+
+        Vector3 move = new Vector3(moveX, 0f, moveZ).normalized;
+
+        float speed = moveSpeed;
+        if (Input.GetKey(KeyCode.LeftShift))
+            speed *= sprintMultiplier;
+
+        Vector3 moveVelocity = move * speed;
+        Vector3 currentVelocity = rb.linearVelocity;
+        rb.linearVelocity = new Vector3(moveVelocity.x, currentVelocity.y, moveVelocity.z);
+    }
+
+    private void HandleJump()
+    {
+        isGrounded = Physics.Raycast(transform.position, Vector3.down, groundCheckDistance + 0.1f, groundMask);
+
+        if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
         {
-            movement += delta * moveSpeed * Time.deltaTime;
-            transform.position = movement;
-
-            // Enviar la nueva posición al servidor
-            if (udpClient != null && udpClient.IsConnected)
-            {
-                udpClient.SendCubeMovement(movement);
-            }
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         }
     }
 
-    // Método para actualizar posición desde red
+    private void SendPositionToServer()
+    {
+        if (udpClient != null && udpClient.IsConnected)
+        {
+            udpClient.SendCubeMovement(transform.position);
+        }
+    }
+
     public void UpdateCubePosition(Vector3 newPosition)
     {
-        movement = newPosition;
         transform.position = newPosition;
     }
 

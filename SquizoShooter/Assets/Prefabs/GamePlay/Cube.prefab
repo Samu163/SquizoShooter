@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 4439039121723156583}
   - component: {fileID: 3847114387022613681}
   - component: {fileID: 1738748981520996431}
+  - component: {fileID: 7594154382450111521}
   m_Layer: 0
   m_Name: Cube
   m_TagString: Untagged
@@ -124,3 +125,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4e898d77043cedd4498ea0cc551450da, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CubeMovement
+  moveSpeed: 5
+  sprintMultiplier: 1.5
+  jumpForce: 5
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 64
+  groundCheckDistance: 0.1
+--- !u!54 &7594154382450111521
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4377001297458088799}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
