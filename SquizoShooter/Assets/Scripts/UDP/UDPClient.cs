@@ -149,6 +149,8 @@ public class UDPClient : MonoBehaviour
                         var controller = cube.GetComponent<PlayerController>();
                         if (controller != null)
                             controller.health = health;
+
+                        Debug.LogWarning($"[Client] Actualizada salud de {key} a {health}");
                     }
                 });
             }

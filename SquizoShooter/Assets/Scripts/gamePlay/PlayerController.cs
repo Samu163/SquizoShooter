@@ -113,7 +113,7 @@ public class PlayerController : MonoBehaviour
         {
             health -= 5f;
             if (health < 0f) health = 0f;
-            Debug.Log($"Player health decreased to {health}");
+            Debug.LogWarning($"Player health decreased to {health}");
         }
     }
 
