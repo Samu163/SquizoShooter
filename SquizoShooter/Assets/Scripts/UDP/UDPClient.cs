@@ -117,7 +117,7 @@ public class UDPClient : MonoBehaviour
             }
 
             // Marcar como jugador local y habilitar movimiento
-            CubeMovement move = myCube.GetComponent<CubeMovement>();
+            PlayerController move = myCube.GetComponent<PlayerController>();
             if (move != null)
             {
                 move.SetAsLocalPlayer(true);
@@ -178,10 +178,10 @@ public class UDPClient : MonoBehaviour
                         GameObject cube = playerCubes[key];
                         if (cube != null)
                         {
-                            CubeMovement move = cube.GetComponent<CubeMovement>();
+                            PlayerController move = cube.GetComponent<PlayerController>();
                             if (move != null)
                             {
-                                move.UpdateCubePosition(newPos);
+                                move.UpdatePosition(newPos);
                             }
                             else
                             {
@@ -205,12 +205,12 @@ public class UDPClient : MonoBehaviour
         GameObject newCube = Instantiate(cubePrefab, position, Quaternion.identity);
 
         // Desactivar control local
-        CubeMovement movementScript = newCube.GetComponent<CubeMovement>();
+        PlayerController movementScript = newCube.GetComponent<PlayerController>();
         if (movementScript != null)
         {
             movementScript.SetAsLocalPlayer(false);
             movementScript.enabled = true;
-            movementScript.UpdateCubePosition(position);
+            movementScript.UpdatePosition(position);
         }
 
         lock (cubesLock)

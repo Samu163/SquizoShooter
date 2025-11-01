@@ -129,7 +129,6 @@ GameObject:
   m_Component:
   - component: {fileID: 14129592}
   - component: {fileID: 14129591}
-  - component: {fileID: 14129590}
   - component: {fileID: 14129593}
   m_Layer: 0
   m_Name: Main Camera
@@ -138,14 +137,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!81 &14129590
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 14129589}
-  m_Enabled: 1
 --- !u!20 &14129591
 Camera:
   m_ObjectHideFlags: 0
@@ -579,7 +570,7 @@ MonoBehaviour:
   serverIP: 127.0.0.1
   serverPort: 9050
   clientPort: 0
-  cubePrefab: {fileID: 3267842532319753545, guid: 7fb6af0259026ed418208e1064fd0a8e, type: 3}
+  cubePrefab: {fileID: 7989583440541540091, guid: dc9f1c6cd517ce04dafc368d3e366418, type: 3}
 --- !u!4 &2059484778
 Transform:
   m_ObjectHideFlags: 0
