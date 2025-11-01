@@ -19,6 +19,7 @@ public class UDPServer : MonoBehaviour
     private readonly Dictionary<string, EndPoint> connectedClients = new Dictionary<string, EndPoint>();
     private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
+    private readonly Dictionary<string, float> playerHealth = new Dictionary<string, float>();
     private readonly object clientsLock = new object();
 
     public void StartServer()
@@ -98,6 +99,27 @@ public class UDPServer : MonoBehaviour
 
             // Notificar a todos sobre el nuevo jugador
             BroadcastMove(newKey, Vector3.zero);
+        }
+        else if (message.StartsWith("PLAYERDATA:"))
+        {
+            string payload = message.Substring("PLAYERDATA:".Length);
+            int sep = payload.IndexOf(':');
+            if (sep < 0) return;
+
+            string senderKey = payload.Substring(0, sep);
+            string valueStr = payload.Substring(sep + 1);
+
+            if (float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out float health))
+            {
+                lock (clientsLock)
+                {
+                    // Guarda la vida en un nuevo diccionario
+                    playerHealth[senderKey] = health;
+                }
+
+                Debug.Log($"[Server] Vida actualizada: {senderKey} -> {health}");
+                BroadcastPlayerHealth(senderKey, health);
+            }
         }
         else if (message.StartsWith("MOVE:"))
         {
@@ -282,6 +304,24 @@ public class UDPServer : MonoBehaviour
             {
                 Debug.LogWarning("[Server] Error enviando ROTATE a " + ep + ": " + e.Message);
             }
+        }
+    }
+
+    void BroadcastPlayerHealth(string senderKey, float health)
+    {
+        string msg = string.Format(CultureInfo.InvariantCulture, "PLAYERDATA:{0}:{1:F1}", senderKey, health);
+        byte[] data = Encoding.UTF8.GetBytes(msg);
+
+        List<EndPoint> snapshot;
+        lock (clientsLock)
+        {
+            snapshot = new List<EndPoint>(connectedClients.Values);
+        }
+
+        foreach (var ep in snapshot)
+        {
+            try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
+            catch (Exception e) { Debug.LogWarning("[Server] Error enviando PLAYERDATA: " + e.Message); }
         }
     }
     void SendMessageToClient(string message, EndPoint remote)

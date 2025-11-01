@@ -129,6 +129,31 @@ public class UDPClient : MonoBehaviour
             return;
         }
 
+        if (message.StartsWith("PLAYERDATA:"))
+        {
+            string payload = message.Substring("PLAYERDATA:".Length);
+            int sep = payload.IndexOf(':');
+            if (sep < 0) return;
+
+            string key = payload.Substring(0, sep);
+            string valueStr = payload.Substring(sep + 1);
+
+            if (key == clientKey) return; // ignorar datos propios
+
+            if (float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out float health))
+            {
+                SafeEnqueueMain(() =>
+                {
+                    if (playerCubes.TryGetValue(key, out GameObject cube))
+                    {
+                        var controller = cube.GetComponent<PlayerController>();
+                        if (controller != null)
+                            controller.health = health;
+                    }
+                });
+            }
+        }
+
         if (message.StartsWith("MOVE:"))
         {
             // Formato: MOVE:<key>:x;y;z (usando punto y coma como separador)
@@ -314,6 +339,16 @@ public class UDPClient : MonoBehaviour
         string message = "ROTATE:" + payload;
         SendRawMessage(message);
     }
+
+    public void SendPlayerHealth(float health)
+    {
+        if (!isConnected || clientSocket == null) return;
+        if (string.IsNullOrEmpty(clientKey)) return;
+
+        string message = string.Format(CultureInfo.InvariantCulture, "PLAYERDATA:{0}:{1:F1}", clientKey, health);
+        SendRawMessage(message);
+    }
+
     private void SendRawMessage(string message)
     {
         try

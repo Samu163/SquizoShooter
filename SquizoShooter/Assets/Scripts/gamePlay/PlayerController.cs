@@ -3,6 +3,9 @@ using UnityEngine;
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
+    [Header("Stats")]
+    [SerializeField] public float health = 100f;
+
     [Header("Movement Settings")]
     [SerializeField] private float walkSpeed = 5f;
     [SerializeField] private float sprintSpeed = 8f;
@@ -33,8 +36,10 @@ public class PlayerController : MonoBehaviour
 
     private Vector3 lastSentPosition;
     private Vector3 lastSentRotation;
+    private float lastSentHealth;
     private const float positionThreshold = 0.01f;
     private const float rotationThreshold = 0.5f;
+    private const float healthThreshold = 0.01f;
 
     void Start()
     {
@@ -91,6 +96,7 @@ public class PlayerController : MonoBehaviour
         HandleJump();
         SendPositionToServer();
         SendRotationToServer();
+        SendPlayerDataToServer();
 
         if (Input.GetKeyDown(KeyCode.Escape))
         {
@@ -102,6 +108,12 @@ public class PlayerController : MonoBehaviour
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
+        }
+        if(Input.GetKeyDown(KeyCode.K))
+        {
+            health -= 5f;
+            if (health < 0f) health = 0f;
+            Debug.Log($"Player health decreased to {health}");
         }
     }
 
@@ -164,7 +176,17 @@ public class PlayerController : MonoBehaviour
             verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
         }
     }
-
+    void SendPlayerDataToServer()
+    {
+        if (udpClient != null && udpClient.IsConnected)
+        {
+            if (Mathf.Abs(health - lastSentHealth) > healthThreshold)
+            {
+                udpClient.SendPlayerHealth(health);
+                lastSentHealth = health;
+            }
+        }
+    }
     void SendPositionToServer()
     {
         if (udpClient != null && udpClient.IsConnected)
@@ -227,5 +249,10 @@ public class PlayerController : MonoBehaviour
     public void UpdateRotation(Vector3 rotation)
     {
         transform.rotation = Quaternion.Euler(rotation);
+    }
+
+    public void UpdateHealth(float newHealth)
+    {
+        health = newHealth;
     }
 }
