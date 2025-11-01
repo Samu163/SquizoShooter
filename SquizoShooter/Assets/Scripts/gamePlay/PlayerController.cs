@@ -85,6 +85,7 @@ public class PlayerController : MonoBehaviour
         HandleCamera();
         HandleJump();
         SendPositionToServer();
+        SendRotationToServer();
 
         if (Input.GetKeyDown(KeyCode.Escape))
         {
@@ -167,12 +168,12 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // Called by network manager to update remote player position
-    public void UpdatePlayerPosition(Vector3 newPosition)
+    void SendRotationToServer()
     {
-        if (!isLocalPlayer)
+        if (udpClient != null && udpClient.IsConnected)
         {
-            transform.position = newPosition;
+            float yaw = transform.eulerAngles.y;
+            udpClient.SendCubeRotation(new Vector3(0, yaw, 0));
         }
     }
 
@@ -207,4 +208,9 @@ public class PlayerController : MonoBehaviour
     }
 
     //TODO: UpdateRotation
+
+    public void UpdateRotation(Vector3 rotation)
+    {
+        transform.rotation = Quaternion.Euler(rotation);
+    }
 }

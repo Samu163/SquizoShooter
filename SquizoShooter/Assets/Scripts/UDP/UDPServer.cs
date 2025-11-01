@@ -18,6 +18,7 @@ public class UDPServer : MonoBehaviour
 
     private readonly Dictionary<string, EndPoint> connectedClients = new Dictionary<string, EndPoint>();
     private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
+    private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
     private readonly object clientsLock = new object();
 
     public void StartServer()
@@ -145,6 +146,51 @@ public class UDPServer : MonoBehaviour
                 Debug.LogWarning($"[Server] Error parseando coordenadas: {coords}");
             }
         }
+        else if (message.StartsWith("ROTATE"))
+        {
+            string payload = message.Substring("ROTATE:".Length);
+            int sep = payload.IndexOf(':');
+            if (sep < 0)
+            {
+                Debug.LogWarning($"[Server] ROTATE mal formateado: {message}");
+                return;
+            }
+
+            string senderKey = payload.Substring(0, sep);
+            string coords = payload.Substring(sep + 1);
+            string[] parts = coords.Split(';');
+            if (parts.Length != 3)
+            {
+                Debug.LogWarning($"[Server] Coordenadas incompletas: {coords}");
+                return;
+            }
+
+            // Usar InvariantCulture para parsear con punto decimal
+            if (float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) &&
+                float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) &&
+                float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
+            {
+                Vector3 newRot = new Vector3(x, y, z);
+                lock (clientsLock)
+                {
+                    if (playerRotations.ContainsKey(senderKey))
+                    {
+                        playerRotations[senderKey] = newRot;
+                    }
+                    else
+                    {
+                        connectedClients[senderKey] = remote;
+                        playerRotations[senderKey] = newRot;
+                    }
+                }
+                Debug.Log($"[Server] Actualizando rotación de {senderKey}: {newRot}");
+                BroadcastRotate(senderKey, newRot);
+            }
+            else
+            {
+                Debug.LogWarning($"[Server] Error parseando coordenadas: {coords}");
+            }
+        }
         else if (message.StartsWith("GOODBYE:"))
         {
             string key = message.Substring("GOODBYE:".Length);
@@ -212,6 +258,32 @@ public class UDPServer : MonoBehaviour
         }
     }
 
+    void BroadcastRotate(string senderKey, Vector3 rot)
+    {
+        string rotStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
+                                     rot.x, rot.y, rot.z);
+        string msg = $"ROTATE:{senderKey}:{rotStr}";
+        byte[] data = Encoding.UTF8.GetBytes(msg);
+
+        List<EndPoint> snapshot = new List<EndPoint>();
+        lock (clientsLock)
+        {
+            foreach (var kv in connectedClients)
+                snapshot.Add(kv.Value);
+        }
+
+        foreach (var ep in snapshot)
+        {
+            try
+            {
+                serverSocket.SendTo(data, data.Length, SocketFlags.None, ep);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Server] Error enviando ROTATE a " + ep + ": " + e.Message);
+            }
+        }
+    }
     void SendMessageToClient(string message, EndPoint remote)
     {
         try

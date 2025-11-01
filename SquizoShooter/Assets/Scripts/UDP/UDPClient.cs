@@ -193,6 +193,54 @@ public class UDPClient : MonoBehaviour
             });
         }
 
+        if (message.StartsWith("ROTATE"))
+        {
+            // Formato: ROTATE:<key>:x;y;z (usando punto y coma como separador)
+            string[] parts = message.Split(':');
+            if (parts.Length < 3)
+            {
+                Debug.LogWarning($"[Client] ROTATE mal formateado: {message}");
+                return;
+            }
+            string key = parts[1];
+            string[] coords = parts[2].Split(';');
+            if (coords.Length < 3)
+            {
+                Debug.LogWarning($"[Client] Coordenadas incompletas: {parts[2]}");
+                return;
+            }
+            // Usar InvariantCulture para parsear con punto decimal
+            if (!float.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
+                !float.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
+                !float.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
+            {
+                Debug.LogWarning($"[Client] Error parseando coordenadas: {parts[2]}");
+                return;
+            }
+            Vector3 newRot = new Vector3(x, y, z);
+            // Ignorar mi propia rotación
+            if (key == clientKey)
+                return;
+            // Actualizar rotación del cubo remoto (todo en el hilo principal)
+            SafeEnqueueMain(() =>
+            {
+                lock (cubesLock)
+                {
+                    if (playerCubes.TryGetValue(key, out GameObject cube))
+                    {
+                        if (cube != null)
+                        {
+                            cube.transform.rotation = Quaternion.Euler(newRot);
+                        }
+                        else
+                        {
+                            cube.transform.rotation = Quaternion.Euler(newRot);
+                        }
+                    }
+                }
+            });
+        }
+
         if (message.StartsWith("GOODBYE:"))
         {
             string key = message.Substring(8);
@@ -251,6 +299,21 @@ public class UDPClient : MonoBehaviour
         SendRawMessage(message);
     }
 
+    public void SendCubeRotation(Vector3 rotation)
+    {
+        if (!isConnected || clientSocket == null) return;
+        if (string.IsNullOrEmpty(clientKey))
+        {
+            Debug.LogWarning("[Client] No tengo clientKey todavía");
+            return;
+        }
+        // Usar InvariantCulture para formatear con punto decimal y punto y coma como separador
+        string rotStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
+                                      rotation.x, rotation.y, rotation.z);
+        string payload = $"{clientKey}:{rotStr}";
+        string message = "ROTATE:" + payload;
+        SendRawMessage(message);
+    }
     private void SendRawMessage(string message)
     {
         try
