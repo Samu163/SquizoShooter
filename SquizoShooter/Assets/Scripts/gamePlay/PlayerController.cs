@@ -31,6 +31,11 @@ public class PlayerController : MonoBehaviour
     private float targetRotationY = 0f;
     private bool isGrounded;
 
+    private Vector3 lastSentPosition;
+    private Vector3 lastSentRotation;
+    private const float positionThreshold = 0.01f;
+    private const float rotationThreshold = 0.5f;
+
     void Start()
     {
         controller = GetComponent<CharacterController>();
@@ -164,7 +169,11 @@ public class PlayerController : MonoBehaviour
     {
         if (udpClient != null && udpClient.IsConnected)
         {
-            udpClient.SendCubeMovement(transform.position);
+            if (Vector3.Distance(transform.position, lastSentPosition) > positionThreshold)
+            {
+                udpClient.SendCubeMovement(transform.position);
+                lastSentPosition = transform.position;
+            }
         }
     }
 
@@ -173,7 +182,13 @@ public class PlayerController : MonoBehaviour
         if (udpClient != null && udpClient.IsConnected)
         {
             float yaw = transform.eulerAngles.y;
-            udpClient.SendCubeRotation(new Vector3(0, yaw, 0));
+            Vector3 currentRotation = new Vector3(0, yaw, 0);
+
+            if (Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.y, currentRotation.y)) > rotationThreshold)
+            {
+                udpClient.SendCubeRotation(currentRotation);
+                lastSentRotation = currentRotation;
+            }
         }
     }
 
