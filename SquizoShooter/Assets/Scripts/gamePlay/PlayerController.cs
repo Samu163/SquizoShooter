@@ -4,6 +4,7 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     [Header("Stats")]
+    [SerializeField] public float maxHealth = 100f;
     [SerializeField] public float health = 100f;
 
     [Header("Movement Settings")]
@@ -98,11 +99,16 @@ public class PlayerController : MonoBehaviour
         SendRotationToServer();
         SendPlayerDataToServer();
 
-        if(Input.GetKeyDown(KeyCode.K))
+        if (Input.GetKeyDown(KeyCode.K))
         {
-            health -= 5f;
-            if (health < 0f) health = 0f;
+            health -= 10f;
+            health = Mathf.Clamp(health, 0f, maxHealth);
             Debug.LogWarning($"Player health decreased to {health}");
+
+            if (HealthBarUI.instance != null)
+            {
+                HealthBarUI.instance.UpdateUI(health, maxHealth);
+            }
         }
     }
 
@@ -165,6 +171,7 @@ public class PlayerController : MonoBehaviour
             verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
         }
     }
+
     void SendPlayerDataToServer()
     {
         if (udpClient != null && udpClient.IsConnected)
@@ -217,6 +224,15 @@ public class PlayerController : MonoBehaviour
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
+            if (HealthBarUI.instance != null)
+            {
+                health = maxHealth;
+                HealthBarUI.instance.UpdateUI(health, maxHealth);
+            }
+            else
+            {
+                Debug.LogError("¡No se encontró la BarraDeVidaUI!");
+            }
         }
 
         enabled = true;
@@ -243,5 +259,10 @@ public class PlayerController : MonoBehaviour
     public void UpdateHealth(float newHealth)
     {
         health = newHealth;
+
+        if (isLocalPlayer && HealthBarUI.instance != null)
+        {
+            HealthBarUI.instance.UpdateUI(health, maxHealth);
+        }
     }
 }
