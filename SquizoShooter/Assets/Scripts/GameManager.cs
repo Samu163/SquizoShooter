@@ -3,13 +3,12 @@ using UnityEngine;
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
-
-    // Enum para gestionar los tipos de juego
     public enum GameMode { Server, Client, None }
     private GameMode currentGameMode = GameMode.None;
 
     void Awake()
     {
+        Application.runInBackground = true;
         if (Instance == null)
         {
             Instance = this;
@@ -17,20 +16,25 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Destroy(gameObject); // Asegurarse de que solo exista una instancia
+            Destroy(gameObject);
         }
+
+        SetWindowMode();
     }
 
-    // Establecer el tipo de juego
     public void SetGameMode(GameMode mode)
     {
         currentGameMode = mode;
     }
 
-    // Obtener el tipo de juego actual
     public GameMode GetGameMode()
     {
         return currentGameMode;
     }
-}
 
+    private void SetWindowMode()
+    {
+        Screen.fullScreen = false;
+        Screen.SetResolution(1920, 1080, false);  
+    }
+}

@@ -109,7 +109,7 @@ public class UDPClient : MonoBehaviour
             clientKey = message.Substring(8);
             Debug.Log("Received client key: " + clientKey);
 
-            // Instanciar cubo local
+
             GameObject myCube = Instantiate(cubePrefab, Vector3.zero, Quaternion.identity);
 
             lock (cubesLock)
