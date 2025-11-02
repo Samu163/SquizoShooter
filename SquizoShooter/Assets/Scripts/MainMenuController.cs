@@ -16,18 +16,23 @@ public class MainMenuController : MonoBehaviour
     // Crear juego (servidor)
     void CreateGame()
     {
-        SceneManager.LoadScene("Gameplay"); // Cargar escena Gameplay
-
-        // Establecer el modo como servidor
+        SceneManager.LoadScene("Gameplay"); 
         GameManager.Instance.SetGameMode(GameManager.GameMode.Server);
     }
 
     // Unirse a juego (cliente)
     void JoinGame()
     {
-        SceneManager.LoadScene("Gameplay"); // Cargar la lista de servidores
-
-        // Establecer el modo como cliente
+        SceneManager.LoadScene("Gameplay");
         GameManager.Instance.SetGameMode(GameManager.GameMode.Client);
+    }
+
+    public void Quit()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
     }
 }

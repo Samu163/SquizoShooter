@@ -17,6 +17,7 @@ public class UDPClient : MonoBehaviour
 
     [Header("Gameplay")]
     public GameObject cubePrefab;
+    public UiController uiController;
 
     private Socket clientSocket;
     private EndPoint serverEndPoint;
@@ -123,6 +124,8 @@ public class UDPClient : MonoBehaviour
                 move.SetAsLocalPlayer(true);
                 move.enabled = true;
             }
+            if (uiController != null)
+                uiController.ShowNotification("You joined the game!", Color.green);
 
             // Enviar posición inicial
             SendCubeMovement(Vector3.zero);
@@ -198,6 +201,9 @@ public class UDPClient : MonoBehaviour
                     {
                         // Crear nuevo cubo remoto
                         InstantiateRemoteCube(key, newPos);
+
+                        if(uiController != null)
+                            uiController.ShowPlayerJoined();
                     }
                     else
                     {
@@ -272,6 +278,8 @@ public class UDPClient : MonoBehaviour
         {
             string key = message.Substring(8);
             SafeEnqueueMain(() => RemoveCube(key));
+            if (uiController != null)
+                uiController.ShowPlayerLeft();
         }
     }
 
