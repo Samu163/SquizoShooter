@@ -10,7 +10,7 @@ public class UiController : MonoBehaviour
     public GameObject deathPanel;
     public Button respawnButton;
     public Button quitButton;
-    public TextMeshProUGUI connectionStatusText;
+    //public TextMeshProUGUI connectionStatusText;
     public TextMeshProUGUI notificationText;
 
     [Header("Connection Status Settings")]
@@ -112,11 +112,13 @@ public class UiController : MonoBehaviour
 
             if (show)
             {
+                Time.timeScale = 0f;
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
             }
             else
             {
+                Time.timeScale = 1f;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
             }
@@ -226,63 +228,74 @@ public class UiController : MonoBehaviour
 
     // ===== CONNECTION STATUS =====
 
-    public void ShowConnectingStatus()
-    {
-        if (connectionStatusText != null)
-        {
-            connectionStatusText.text = connectingMessage;
-            connectionStatusText.gameObject.SetActive(true);
+    //public void ShowConnectingStatus()
+    //{
+    //    if (connectionStatusText != null)
+    //    {
+    //        connectionStatusText.text = connectingMessage;
+    //        connectionStatusText.gameObject.SetActive(true);
 
-            if (hideConnectionStatusCoroutine != null)
-            {
-                StopCoroutine(hideConnectionStatusCoroutine);
-                hideConnectionStatusCoroutine = null;
-            }
-        }
-    }
+    //        if (hideConnectionStatusCoroutine != null)
+    //        {
+    //            StopCoroutine(hideConnectionStatusCoroutine);
+    //            hideConnectionStatusCoroutine = null;
+    //        }
+    //    }
+    //}
 
-    public void ShowHostingStatus()
-    {
-        if (connectionStatusText != null)
-        {
-            connectionStatusText.text = hostingMessage;
-            connectionStatusText.gameObject.SetActive(true);
+    //public void ShowHostingStatus()
+    //{
+    //    if (connectionStatusText != null)
+    //    {
+    //        connectionStatusText.text = hostingMessage;
+    //        connectionStatusText.gameObject.SetActive(true);
 
-            if (hideConnectionStatusCoroutine != null)
-            {
-                StopCoroutine(hideConnectionStatusCoroutine);
-                hideConnectionStatusCoroutine = null;
-            }
-        }
-    }
+    //        if (hideConnectionStatusCoroutine != null)
+    //        {
+    //            StopCoroutine(hideConnectionStatusCoroutine);
+    //            hideConnectionStatusCoroutine = null;
+    //        }
+    //    }
+    //}
 
-    public void ShowConnectedStatus()
-    {
-        if (connectionStatusText != null)
-        {
-            connectionStatusText.text = connectedMessage;
-            connectionStatusText.gameObject.SetActive(true);
+    //public void ShowConnectedStatus()
+    //{
+    //    if (connectionStatusText != null)
+    //    {
+    //        connectionStatusText.text = connectedMessage;
+    //        connectionStatusText.gameObject.SetActive(true);
 
-            if (hideConnectionStatusCoroutine != null)
-                StopCoroutine(hideConnectionStatusCoroutine);
+    //        if (hideConnectionStatusCoroutine != null)
+    //            StopCoroutine(hideConnectionStatusCoroutine);
 
-            hideConnectionStatusCoroutine = StartCoroutine(HideConnectionStatusAfterDelay(connectedDisplayTime));
-        }
-    }
+    //        hideConnectionStatusCoroutine = StartCoroutine(HideConnectionStatusAfterDelay(connectedDisplayTime));
+    //    }
+    //}
 
-    public void HideConnectionStatus()
-    {
-        if (connectionStatusText != null)
-        {
-            connectionStatusText.gameObject.SetActive(false);
-        }
+    //public void HideConnectionStatus()
+    //{
+    //    if (connectionStatusText != null)
+    //    {
+    //        connectionStatusText.gameObject.SetActive(false);
+    //    }
 
-        if (hideConnectionStatusCoroutine != null)
-        {
-            StopCoroutine(hideConnectionStatusCoroutine);
-            hideConnectionStatusCoroutine = null;
-        }
-    }
+    //    if (hideConnectionStatusCoroutine != null)
+    //    {
+    //        StopCoroutine(hideConnectionStatusCoroutine);
+    //        hideConnectionStatusCoroutine = null;
+    //    }
+    //}
+    //private IEnumerator HideConnectionStatusAfterDelay(float delay)
+    //{
+    //    yield return new WaitForSeconds(delay);
+
+    //    if (connectionStatusText != null)
+    //    {
+    //        connectionStatusText.gameObject.SetActive(false);
+    //    }
+
+    //    hideConnectionStatusCoroutine = null;
+    //}
 
     // ===== NOTIFICATIONS =====
 
@@ -343,17 +356,7 @@ public class UiController : MonoBehaviour
         hideNotificationCoroutine = null;
     }
 
-    private IEnumerator HideConnectionStatusAfterDelay(float delay)
-    {
-        yield return new WaitForSeconds(delay);
 
-        if (connectionStatusText != null)
-        {
-            connectionStatusText.gameObject.SetActive(false);
-        }
-
-        hideConnectionStatusCoroutine = null;
-    }
 
     public void ResumeGame()
     {
