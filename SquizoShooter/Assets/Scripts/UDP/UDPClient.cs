@@ -145,7 +145,6 @@ public class UDPClient : MonoBehaviour
             SendCubeMovement(spawnPos);
             return;
         }
-
         if (message.StartsWith("PLAYERDATA:"))
         {
             string payload = message.Substring("PLAYERDATA:".Length);
@@ -179,7 +178,6 @@ public class UDPClient : MonoBehaviour
                 });
             }
         }
-
         if (message.StartsWith("MOVE:"))
         {
             string[] parts = message.Split(':');
@@ -285,31 +283,43 @@ public class UDPClient : MonoBehaviour
         }
         if (message.StartsWith("HEAL_STATION_DATA:"))
         {
-            // El formato es HEAL_STATION_DATA:[ID]:[ESTADO] (0 o 1)
             string[] parts = message.Split(':');
 
             if (parts.Length == 3 &&
                 int.TryParse(parts[1], out int stationID) &&
                 int.TryParse(parts[2], out int stateCode))
             {
-                // Convertimos el 0/1 a booleano
                 bool isCooldown = (stateCode == 1);
-
-                // --- �A�ADE ESTE LOG! ---
-                Debug.LogWarning($"[Client] Recibido HEAL_STATION_DATA. ID: {stationID}, Cooldown: {isCooldown}");
-                // -------------------------
-
                 SafeEnqueueMain(() =>
                 {
                     lock (healStationsLock)
                     {
                         if (healStations.TryGetValue(stationID, out HealStation station))
                         {
-                            // Llamamos a la nueva funci�n unificada
                             station.SetNetworkState(isCooldown);
                         }
                     }
                 });
+            }
+        }
+        if (message.StartsWith("KILL_CONFIRMED:"))
+        {
+            string shooterKey = message.Substring("KILL_CONFIRMED:".Length);
+            if (shooterKey == clientKey)
+            {
+                SafeEnqueueMain(() =>
+                {
+                    if (KillCountUI.instance != null)
+                    {
+                        KillCountUI.instance.AddKill();
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[Client] KillCountUI.instance es null!");
+                    }
+                });
+
+                Debug.Log($"[Client] Kill confirmado para jugador local!");
             }
         }
 
@@ -372,14 +382,10 @@ public class UDPClient : MonoBehaviour
             Debug.Log($"[Client] HealStation {id} registrada.");
         }
     }
-
-    // --- 3. A�ade esta nueva funci�n P�BLICA para ENVIAR ---
-    // La HealStation llamar� a esto en OnTriggerEnter()
     public void SendHealRequest(int stationID)
     {
         if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
 
-        // El servidor recibir� "HEAL_REQUEST:ID_JUGADOR:ID_ESTACION"
         string message = $"HEAL_REQUEST:{clientKey}:{stationID}";
         SendRawMessage(message);
     }
@@ -423,8 +429,6 @@ public class UDPClient : MonoBehaviour
         string message = string.Format(CultureInfo.InvariantCulture, "PLAYERDATA:{0}:{1:F1}", clientKey, health);
         SendRawMessage(message);
     }
-
-    // Nuevo: enviar un disparo al servidor (servidor aplicar� da�o al objetivo)
     public void SendShotToServer(string targetKey, float damage)
     {
         if (!isConnected || clientSocket == null) return;
@@ -435,8 +439,6 @@ public class UDPClient : MonoBehaviour
         string message = $"SHOT:{clientKey}:{targetKey}:{dmgStr}";
         SendRawMessage(message);
     }
-
-    // Nuevo: obtener la key asociada a un GameObject (devuelve null si no est� registrado)
     public string GetKeyForGameObject(GameObject go)
     {
         if (go == null) return null;

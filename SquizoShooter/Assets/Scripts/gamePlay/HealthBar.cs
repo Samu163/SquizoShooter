@@ -8,7 +8,6 @@ public class HealthBarUI : MonoBehaviour
 
     public Image imagenRelleno;
     public TextMeshProUGUI textoSalud; 
-
     void Awake()
     {
         if (instance == null)

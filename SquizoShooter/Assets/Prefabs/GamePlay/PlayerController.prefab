@@ -267,9 +267,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   maxHealth: 100
   health: 100
-  walkSpeed: 4
-  sprintSpeed: 7
-  jumpForce: 3
+  walkSpeed: 10
+  sprintSpeed: 15
+  jumpForce: 2
   gravity: -10
   cameraTransform: {fileID: 4203585546040098731}
   mouseSensitivityX: 2

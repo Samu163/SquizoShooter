@@ -21,10 +21,8 @@ public class UDPServer : MonoBehaviour
     private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, float> playerHealth = new Dictionary<string, float>();
 
-    // --- NUEVOS CAMPOS PARA HEALTH STATIONS ---
-    private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>(); // true = en cooldown
-    private const float HEAL_STATION_COOLDOWN_TIME = 5.0f; // Debe coincidir con el cliente
-                                                           // ---------------------------------------------
+    private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>(); 
+    private const float HEAL_STATION_COOLDOWN_TIME = 5.0f; 
 
     private readonly object clientsLock = new object();
 
@@ -134,6 +132,7 @@ public class UDPServer : MonoBehaviour
                 BroadcastPlayerHealth(senderKey, health);
             }
         }
+
         else if (message.StartsWith("SHOT:"))
         {
             // Formato: SHOT:<shooterKey>:<targetKey>:<damage>
@@ -151,16 +150,18 @@ public class UDPServer : MonoBehaviour
 
             if (!float.TryParse(dmgStr, NumberStyles.Float, CultureInfo.InvariantCulture, out float damage))
             {
-                Debug.LogWarning($"[Server] SHOT: error parseando da�o: {dmgStr}");
+                Debug.LogWarning($"[Server] SHOT: error parseando daño: {dmgStr}");
                 return;
             }
 
-            // Proteccion: no aplicar da�o si shooter == target
             if (shooterKey == targetKey)
             {
                 Debug.LogWarning($"[Server] SHOT ignorado: shooter == target ({shooterKey}).");
                 return;
             }
+
+            bool wasKill = false;
+            float newHealth = 0f;
 
             lock (clientsLock)
             {
@@ -168,13 +169,25 @@ public class UDPServer : MonoBehaviour
                 if (playerHealth.ContainsKey(targetKey))
                     currentHealth = playerHealth[targetKey];
                 else
-                    playerHealth[targetKey] = currentHealth; // asegurar existencia
+                    playerHealth[targetKey] = currentHealth; 
 
-                float newHealth = Mathf.Clamp(currentHealth - damage, 0f, 100f);
+                newHealth = Mathf.Clamp(currentHealth - damage, 0f, 100f);
                 playerHealth[targetKey] = newHealth;
+
+                if (newHealth <= 0f && currentHealth > 0f)
+                {
+                    wasKill = true;
+                    Debug.Log($"[Server] ¡KILL! {shooterKey} eliminó a {targetKey}");
+                }
 
                 Debug.Log($"[Server] SHOT recibido: {shooterKey} -> {targetKey} dmg={damage} newHealth={newHealth}");
                 BroadcastPlayerHealth(targetKey, newHealth);
+            }
+
+            // Si fue una kill, notificar al shooter
+            if (wasKill)
+            {
+                SendKillConfirmation(shooterKey);
             }
         }
         else if (message.StartsWith("MOVE:"))
@@ -242,8 +255,6 @@ public class UDPServer : MonoBehaviour
                 Debug.LogWarning($"[Server] Coordenadas incompletas: {coords}");
                 return;
             }
-
-            // Usar InvariantCulture para parsear con punto decimal
             if (float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) &&
                 float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) &&
                 float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
@@ -270,10 +281,8 @@ public class UDPServer : MonoBehaviour
             }
         }
 
-        // --- INICIO DEL NUEVO BLOQUE HEAL_REQUEST ---
         else if (message.StartsWith("HEAL_REQUEST:"))
         {
-            // Formato: HEAL_REQUEST:ID_JUGADOR:ID_ESTACION
             string[] parts = message.Split(':');
             if (parts.Length != 3)
             {
@@ -293,23 +302,18 @@ public class UDPServer : MonoBehaviour
 
             lock (clientsLock)
             {
-                // 1. Verificar si la estaci�n ya est� en cooldown
                 if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
                 {
-                    // Ya est� en cooldown, no hacer nada.
                     Debug.Log($"[Server] Petici�n de cura para {stationID} denegada (ya en cooldown).");
                     wasApproved = false;
                 }
                 else
                 {
-                    // 2. No est� en cooldown. �Aprobar la cura!
                     Debug.Log($"[Server] Petici�n de cura para {stationID} APROBADA. Iniciando cooldown.");
                     wasApproved = true;
 
-                    // 3. Poner la estaci�n en cooldown
                     healStationStates[stationID] = true;
 
-                    // 4. Curar al jugador (asumimos que cura al m�ximo, 100f)
                     if (playerHealth.ContainsKey(senderKey))
                     {
                         playerHealth[senderKey] = 100f;
@@ -318,28 +322,22 @@ public class UDPServer : MonoBehaviour
                 }
             }
 
-            // 5. Si fue aprobada, notificar a todos
+            
             if (wasApproved)
-            {
-                // a. Notificar a todos la nueva vida del jugador
+            {  
                 if (newHealth > 0)
                 {
                     BroadcastPlayerHealth(senderKey, newHealth);
                 }
-
-                // b. Notificar a todos que la estaci�n est� en cooldown (estado 1)
                 BroadcastHealStationState(stationID, 1);
-
-                // c. Iniciar un timer para quitar el cooldown
                 Timer cooldownTimer = new Timer(
-                    (state) => EndHealStationCooldown(stationID), // Llama a la funci�n cuando se cumple
-                    null, // Sin estado extra
-                    (int)(HEAL_STATION_COOLDOWN_TIME * 1000), // Tiempo en milisegundos
-                    Timeout.Infinite // No se repite
+                    (state) => EndHealStationCooldown(stationID), 
+                    null,
+                    (int)(HEAL_STATION_COOLDOWN_TIME * 1000), 
+                    Timeout.Infinite 
                 );
             }
         }
-        // --- FIN DEL NUEVO BLOQUE HEAL_REQUEST ---
 
         else if (message.StartsWith("GOODBYE:"))
         {
@@ -351,21 +349,35 @@ public class UDPServer : MonoBehaviour
             Debug.LogWarning("[Server] Mensaje desconocido: " + message);
         }
     }
-
-    // --- NUEVA FUNCI�N (Callback del Timer) ---
     void EndHealStationCooldown(int stationID)
     {
         Debug.Log($"[Server] Cooldown de HealStation {stationID} terminado.");
 
         lock (clientsLock)
         {
-            healStationStates[stationID] = false; // Marcar como disponible
+            healStationStates[stationID] = false; 
         }
 
         // Broadcast el nuevo estado (disponible = 0)
         BroadcastHealStationState(stationID, 0);
     }
-    // ----------------------------------------
+
+    void SendKillConfirmation(string shooterKey)
+    {
+        EndPoint shooterEndPoint;
+        lock (clientsLock)
+        {
+            if (!connectedClients.TryGetValue(shooterKey, out shooterEndPoint))
+            {
+                Debug.LogWarning($"[Server] No se pudo encontrar EndPoint para shooter: {shooterKey}");
+                return;
+            }
+        }
+
+        string msg = $"KILL_CONFIRMED:{shooterKey}";
+        SendMessageToClient(msg, shooterEndPoint);
+        Debug.Log($"[Server] Enviado KILL_CONFIRMED a {shooterKey}");
+    }
 
     void SendAllPlayerPositionsToSingleClient(string newKey, EndPoint remote)
     {

@@ -49,11 +49,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float wallRunMinForward = 0.2f; // input mínimo hacia delante para iniciar wallrun
     [SerializeField] private float wallRunSpeed = 5f;
 
-    // Nuevo: control para evitar engancharse demasiado fácil y re-attach tras wall-jump
     [SerializeField] private float minWallAttachFallSpeed = -0.5f; // debes estar cayendo al menos este valor para enganchar
     [SerializeField] private float wallReattachCooldown = 0.25f;   // tiempo mínimo tras wall-jump para volver a enganchar
 
-    // Nueva opción: ventana después de saltar donde se permite enganchar a la pared (más natural)
     [SerializeField] private float wallAttachWindow = 0.35f;
 
     [Header("Slide Settings")]
@@ -163,13 +161,11 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // Disable camera initially
         if (playerCamera != null)
         {
             playerCamera.enabled = false;
         }
 
-        // Init rotation
         if (cameraTransform != null)
         {
             rotationY = transform.eulerAngles.y;
@@ -194,7 +190,6 @@ public class PlayerController : MonoBehaviour
             playerCamera.enabled = true;
         }
 
-        // Estado de suelo
         isGrounded = controller.isGrounded;
 
         // Inputs y estados
@@ -621,28 +616,30 @@ public class PlayerController : MonoBehaviour
         health = 0f;
         Debug.Log("[PlayerController] Player died!");
 
-        // Ocultar el modelo visual (mejor que desactivar renderers)
         if (visualModel != null)
         {
             visualModel.SetActive(false);
         }
 
-        // Deshabilitar el CharacterController para evitar colisiones
         if (controller != null)
         {
             controller.enabled = false;
         }
 
-        // Actualizar UI
         if (HealthBarUI.instance != null)
         {
             HealthBarUI.instance.UpdateUI(0f, maxHealth);
         }
 
+        if (isLocalPlayer && KillCountUI.instance != null)
+        {
+            KillCountUI.instance.ResetKills();
+            Debug.Log("[PlayerController] Kills reseteados al morir");
+        }
+
         // Enviar muerte al servidor
         SendPlayerDataToServer();
 
-        // Mostrar pantalla de muerte (solo si es jugador local)
         if (isLocalPlayer)
         {
             UiController uiController = FindObjectOfType<UiController>();
@@ -655,13 +652,8 @@ public class PlayerController : MonoBehaviour
 
     public void Respawn()
     {
-        Debug.Log("[PlayerController] Respawning player...");
-
-        // Resetear vida
         health = maxHealth;
         isDead = false;
-
-        // Obtener nueva posicion de spawn
         Vector3 spawnPos = Vector3.zero;
 
         if (GameplayManager.Instance != null)
@@ -677,9 +669,6 @@ public class PlayerController : MonoBehaviour
             );
         }
 
-        Debug.Log($"[PlayerController] Target spawn position: {spawnPos}");
-
-        // IMPORTANTE: Deshabilitar el controller ANTES de mover
         if (controller != null)
         {
             controller.enabled = false;
@@ -687,9 +676,6 @@ public class PlayerController : MonoBehaviour
 
         transform.position = spawnPos;
 
-        Debug.Log($"[PlayerController] Position set to: {transform.position}");
-
-        // Resetear velocidad vertical
         verticalVelocity = Vector3.zero;
 
         if (controller != null)
@@ -697,18 +683,15 @@ public class PlayerController : MonoBehaviour
             controller.enabled = true;
         }
 
-        // Mostrar el modelo visual
         if (visualModel != null)
         {
             visualModel.SetActive(true);
         }
 
-        // Actualizar UI
         if (HealthBarUI.instance != null)
         {
             HealthBarUI.instance.UpdateUI(health, maxHealth);
         }
-
 
         if (udpClient != null && udpClient.IsConnected)
         {
@@ -716,8 +699,6 @@ public class PlayerController : MonoBehaviour
             udpClient.SendCubeMovement(spawnPos);
             udpClient.SendPlayerHealth(health);
         }
-
-        Debug.Log($"[PlayerController] Player respawned at {transform.position} with full health");
     }
 
     public void TakeDamage(float damage)
@@ -827,7 +808,6 @@ public class PlayerController : MonoBehaviour
     {
         health = newHealth;
 
-        // Si es jugador remoto y la vida llega a 0, ocultar el modelo
         if (!isLocalPlayer)
         {
             if (health <= 0f && visualModel != null)
@@ -846,12 +826,10 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // Draw shooting gizmos in Scene view (line + hit sphere).
     void OnDrawGizmos()
     {
         if (!showShootGizmos) return;
 
-        // En modo Play dibujar solo para el jugador local (evita mucho ruido)
         if (Application.isPlaying && !isLocalPlayer) return;
 
         Transform camTransform = cameraTransform;
@@ -861,7 +839,6 @@ public class PlayerController : MonoBehaviour
         Vector3 origin = camTransform.position;
         Vector3 dir = camTransform.forward;
 
-        // Raycast visual (editor + play) usando misma lógica que TryShoot
         RaycastHit[] hits = Physics.RaycastAll(origin, dir, shootRange);
         if (hits != null && hits.Length > 0)
         {
