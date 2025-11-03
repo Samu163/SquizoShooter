@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -48,9 +49,18 @@ public class PlayerController : MonoBehaviour
     private const float rotationThreshold = 0.5f;
     private const float healthThreshold = 0.01f;
 
+    private Vector3 targetPosition;
+    private Quaternion targetRotation;
+    private float interpolationSpeed = 10f;
+
     public bool IsLocalPlayer => isLocalPlayer;
     public bool IsDead => isDead;
 
+    void Awake()
+    {
+        targetPosition = transform.position;
+        targetRotation = transform.rotation;
+    }
     void Start()
     {
         controller = GetComponent<CharacterController>();
@@ -122,7 +132,13 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        if (!isLocalPlayer) return;
+        if (!isLocalPlayer)
+        {
+            transform.position = Vector3.Lerp(transform.position, targetPosition, Time.deltaTime * interpolationSpeed);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * interpolationSpeed);
+            return;
+        }
+
 
         if (isDead) return;
 
@@ -409,7 +425,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!isLocalPlayer)
         {
-            transform.position = position;
+            targetPosition = position;
         }
     }
 
@@ -417,7 +433,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!isLocalPlayer)
         {
-            transform.rotation = Quaternion.Euler(rotation);
+            targetRotation = Quaternion.Euler(rotation);
         }
     }
 
