@@ -7,6 +7,9 @@ public class UiController : MonoBehaviour
 {
     [Header("UI References")]
     public GameObject pauseMenu;
+    public GameObject deathPanel;
+    public Button respawnButton;
+    public Button quitButton;
     public TextMeshProUGUI connectionStatusText;
     public TextMeshProUGUI notificationText;
 
@@ -23,16 +26,60 @@ public class UiController : MonoBehaviour
     private Coroutine hideNotificationCoroutine;
     private Coroutine hideConnectionStatusCoroutine;
 
+    // Cachear el jugador local para mejor rendimiento
+    private PlayerController cachedLocalPlayer;
+
     void Start()
     {
         if (pauseMenu != null)
             pauseMenu.SetActive(false);
+
+        if (deathPanel != null)
+            deathPanel.SetActive(false);
+
+        // Configurar listeners de botones de muerte
+        if (respawnButton != null)
+        {
+            respawnButton.onClick.AddListener(OnRespawnClicked);
+        }
+
+        if (quitButton != null)
+        {
+            quitButton.onClick.AddListener(OnQuitClicked);
+        }
+
+        // Intentar encontrar el jugador local con un pequeño delay
+        StartCoroutine(FindLocalPlayerDelayed());
+    }
+
+    private IEnumerator FindLocalPlayerDelayed()
+    {
+        // Esperar un frame para que todo se inicialice
+        yield return new WaitForSeconds(0.5f);
+
+        cachedLocalPlayer = FindLocalPlayer();
+        if (cachedLocalPlayer != null)
+        {
+            Debug.Log($"[UiController] Jugador local encontrado y cacheado: {cachedLocalPlayer.gameObject.name}");
+        }
+        else
+        {
+            Debug.LogWarning("[UiController] No se encontró jugador local en Start. Se buscará dinámicamente.");
+        }
     }
 
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.Escape))
         {
+            // Actualizar cache si es null
+            if (cachedLocalPlayer == null)
+                cachedLocalPlayer = FindLocalPlayer();
+
+            // No permitir pausar si está muerto
+            if (cachedLocalPlayer != null && cachedLocalPlayer.IsDead)
+                return;
+
             TogglePauseMenu();
         }
     }
@@ -44,7 +91,7 @@ public class UiController : MonoBehaviour
 
         if (isPaused)
         {
-            Time.timeScale = 0f;    
+            Time.timeScale = 0f;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
@@ -75,6 +122,109 @@ public class UiController : MonoBehaviour
             }
         }
     }
+
+    // ===== DEATH SYSTEM =====
+
+    public void ShowDeathScreen()
+    {
+        if (deathPanel != null)
+        {
+            deathPanel.SetActive(true);
+
+            // Desbloquear cursor para poder hacer clic en los botones
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+
+            Debug.Log("[UiController] Death screen shown");
+        }
+        else
+        {
+            Debug.LogError("[UiController] deathPanel no está asignado!");
+        }
+    }
+
+    public void HideDeathScreen()
+    {
+        if (deathPanel != null)
+        {
+            deathPanel.SetActive(false);
+
+            // Volver a bloquear cursor para gameplay
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+
+            Debug.Log("[UiController] Death screen hidden");
+        }
+    }
+
+    private void OnRespawnClicked()
+    {
+        Debug.Log("[UiController] Respawn button clicked");
+
+        // Intentar usar el cache primero
+        PlayerController localPlayer = cachedLocalPlayer;
+
+        // Si el cache es null o fue destruido, buscar de nuevo
+        if (localPlayer == null)
+        {
+            Debug.Log("[UiController] Cache null, buscando jugador local...");
+            localPlayer = FindLocalPlayer();
+            cachedLocalPlayer = localPlayer; // Actualizar cache
+        }
+
+        if (localPlayer != null)
+        {
+            Debug.Log($"[UiController] Jugador encontrado: {localPlayer.gameObject.name}, IsDead: {localPlayer.IsDead}, IsLocal: {localPlayer.IsLocalPlayer}");
+
+            localPlayer.Respawn();
+            HideDeathScreen();
+        }
+        else
+        {
+            Debug.LogError("[UiController] No se encontró el jugador local para respawnear!");
+
+            // Debug adicional: mostrar todos los PlayerControllers encontrados
+            PlayerController[] allPlayers = FindObjectsOfType<PlayerController>();
+            Debug.Log($"[UiController] Total PlayerControllers encontrados: {allPlayers.Length}");
+            for (int i = 0; i < allPlayers.Length; i++)
+            {
+                Debug.Log($"  - Player {i}: {allPlayers[i].gameObject.name}, IsLocal: {allPlayers[i].IsLocalPlayer}, IsDead: {allPlayers[i].IsDead}, Enabled: {allPlayers[i].enabled}");
+            }
+        }
+    }
+
+    private void OnQuitClicked()
+    {
+        Debug.Log("[UiController] Quit button clicked");
+
+        // Desconectar del servidor
+        if (GameplayManager.Instance != null)
+        {
+            GameplayManager.Instance.Disconnect();
+        }
+
+        // Cerrar aplicación
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    private PlayerController FindLocalPlayer()
+    {
+        PlayerController[] players = FindObjectsOfType<PlayerController>(true); // Incluir inactivos
+        foreach (PlayerController player in players)
+        {
+            if (player != null && player.IsLocalPlayer)
+            {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    // ===== CONNECTION STATUS =====
 
     public void ShowConnectingStatus()
     {
@@ -133,6 +283,9 @@ public class UiController : MonoBehaviour
             hideConnectionStatusCoroutine = null;
         }
     }
+
+    // ===== NOTIFICATIONS =====
+
     public void ShowNotification(string message)
     {
         if (notificationText != null)
@@ -212,7 +365,21 @@ public class UiController : MonoBehaviour
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #else
-            Application.Quit();
+        Application.Quit();
 #endif
+    }
+
+    void OnDestroy()
+    {
+        // Limpiar listeners
+        if (respawnButton != null)
+        {
+            respawnButton.onClick.RemoveListener(OnRespawnClicked);
+        }
+
+        if (quitButton != null)
+        {
+            quitButton.onClick.RemoveListener(OnQuitClicked);
+        }
     }
 }

@@ -109,26 +109,28 @@ public class UDPClient : MonoBehaviour
             clientKey = message.Substring(8);
             Debug.Log("Received client key: " + clientKey);
 
+            Vector3 spawnPos = (GameplayManager.Instance != null)
+                    ? GameplayManager.Instance.GetRandomSpawnPosition()
+                    : Vector3.zero;
 
-            GameObject myCube = Instantiate(cubePrefab, Vector3.zero, Quaternion.identity);
+            GameObject myCube = Instantiate(cubePrefab, spawnPos, Quaternion.identity);
 
             lock (cubesLock)
             {
                 playerCubes[clientKey] = myCube;
             }
 
-            // Marcar como jugador local y habilitar movimiento
             PlayerController move = myCube.GetComponent<PlayerController>();
             if (move != null)
             {
                 move.SetAsLocalPlayer(true);
                 move.enabled = true;
             }
+
             if (uiController != null)
                 uiController.ShowNotification("You joined the game!", Color.green);
 
-            // Enviar posición inicial
-            SendCubeMovement(Vector3.zero);
+            SendCubeMovement(spawnPos);
             return;
         }
 
@@ -147,13 +149,17 @@ public class UDPClient : MonoBehaviour
             {
                 SafeEnqueueMain(() =>
                 {
-                    if (playerCubes.TryGetValue(key, out GameObject cube))
+                    lock (cubesLock)
                     {
-                        var controller = cube.GetComponent<PlayerController>();
-                        if (controller != null)
-                            controller.health = health;
-
-                        Debug.LogWarning($"[Client] Actualizada salud de {key} a {health}");
+                        if (playerCubes.TryGetValue(key, out GameObject cube))
+                        {
+                            var controller = cube.GetComponent<PlayerController>();
+                            if (controller != null)
+                            {
+                                controller.UpdateHealth(health);
+                                Debug.Log($"[Client] Actualizada salud de {key} a {health}");
+                            }
+                        }
                     }
                 });
             }
@@ -161,7 +167,6 @@ public class UDPClient : MonoBehaviour
 
         if (message.StartsWith("MOVE:"))
         {
-            // Formato: MOVE:<key>:x;y;z (usando punto y coma como separador)
             string[] parts = message.Split(':');
             if (parts.Length < 3)
             {
@@ -177,7 +182,6 @@ public class UDPClient : MonoBehaviour
                 return;
             }
 
-            // Usar InvariantCulture para parsear con punto decimal
             if (!float.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
                 !float.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
                 !float.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
@@ -188,26 +192,22 @@ public class UDPClient : MonoBehaviour
 
             Vector3 newPos = new Vector3(x, y, z);
 
-            // Ignorar mi propio movimiento
             if (key == clientKey)
                 return;
 
-            // Actualizar o crear cubo remoto (todo en el hilo principal)
             SafeEnqueueMain(() =>
             {
                 lock (cubesLock)
                 {
                     if (!playerCubes.ContainsKey(key))
                     {
-                        // Crear nuevo cubo remoto
                         InstantiateRemoteCube(key, newPos);
 
-                        if(uiController != null)
+                        if (uiController != null)
                             uiController.ShowPlayerJoined();
                     }
                     else
                     {
-                        // Actualizar posición existente
                         GameObject cube = playerCubes[key];
                         if (cube != null)
                         {
@@ -228,7 +228,6 @@ public class UDPClient : MonoBehaviour
 
         if (message.StartsWith("ROTATE"))
         {
-            // Formato: ROTATE:<key>:x;y;z (usando punto y coma como separador)
             string[] parts = message.Split(':');
             if (parts.Length < 3)
             {
@@ -242,7 +241,7 @@ public class UDPClient : MonoBehaviour
                 Debug.LogWarning($"[Client] Coordenadas incompletas: {parts[2]}");
                 return;
             }
-            // Usar InvariantCulture para parsear con punto decimal
+
             if (!float.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
                 !float.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
                 !float.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
@@ -251,10 +250,10 @@ public class UDPClient : MonoBehaviour
                 return;
             }
             Vector3 newRot = new Vector3(x, y, z);
-            // Ignorar mi propia rotación
+
             if (key == clientKey)
                 return;
-            // Actualizar rotación del cubo remoto (todo en el hilo principal)
+
             SafeEnqueueMain(() =>
             {
                 lock (cubesLock)
@@ -262,10 +261,6 @@ public class UDPClient : MonoBehaviour
                     if (playerCubes.TryGetValue(key, out GameObject cube))
                     {
                         if (cube != null)
-                        {
-                            cube.transform.rotation = Quaternion.Euler(newRot);
-                        }
-                        else
                         {
                             cube.transform.rotation = Quaternion.Euler(newRot);
                         }
@@ -287,7 +282,6 @@ public class UDPClient : MonoBehaviour
     {
         GameObject newCube = Instantiate(cubePrefab, position, Quaternion.identity);
 
-        // Desactivar control local
         PlayerController movementScript = newCube.GetComponent<PlayerController>();
         if (movementScript != null)
         {
@@ -326,7 +320,6 @@ public class UDPClient : MonoBehaviour
             return;
         }
 
-        // Usar InvariantCulture para formatear con punto decimal y punto y coma como separador
         string posStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
                                       position.x, position.y, position.z);
         string payload = $"{clientKey}:{posStr}";
@@ -342,7 +335,7 @@ public class UDPClient : MonoBehaviour
             Debug.LogWarning("[Client] No tengo clientKey todavía");
             return;
         }
-        // Usar InvariantCulture para formatear con punto decimal y punto y coma como separador
+
         string rotStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
                                       rotation.x, rotation.y, rotation.z);
         string payload = $"{clientKey}:{rotStr}";
@@ -385,7 +378,6 @@ public class UDPClient : MonoBehaviour
 
     void Update()
     {
-        // Ejecutar acciones en el hilo principal
         while (true)
         {
             Action a = null;

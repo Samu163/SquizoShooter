@@ -9,11 +9,17 @@ using System.Collections.Generic;
 
 public class GameplayManager : MonoBehaviour
 {
+    public static GameplayManager Instance;
+
     [Header("References")]
     public GameObject udpServerObject;
     public GameObject udpClientObject;
     public GameObject playerPrefab;
     public UiController uiController;
+
+    [Header("Spawn Configuration")]
+    public Transform[] spawnPoints;
+    
 
     [Header("Server Settings")]
     public int baseServerPort = 9050;
@@ -26,6 +32,7 @@ public class GameplayManager : MonoBehaviour
 
     void Awake()
     {
+        Instance = this;
         // Initialize main thread dispatcher
         if (UnityMainThreadDispatcher._instance == null)
         {
@@ -57,6 +64,23 @@ public class GameplayManager : MonoBehaviour
             JoinGame();
         }
     }
+
+    //Gameplay Methods
+    public Vector3 GetRandomSpawnPosition()
+    {
+        if (spawnPoints == null || spawnPoints.Length == 0)
+        {
+            Debug.LogWarning("[SpawnManager] No spawn points available, using default position");
+            return Vector3.zero;
+        }
+
+        int randomIndex = UnityEngine.Random.Range(0, spawnPoints.Length);
+        return spawnPoints[randomIndex].position;
+    }
+
+
+
+    //--Init network settings--//
 
     private void HostGame()
     {
@@ -147,43 +171,5 @@ public class GameplayManager : MonoBehaviour
     private void OnDestroy()
     {
         Disconnect();
-    }
-}
-public class UnityMainThreadDispatcher : MonoBehaviour
-{
-    public static UnityMainThreadDispatcher _instance;
-    private readonly Queue<Action> _executionQueue = new Queue<Action>();
-
-    public static UnityMainThreadDispatcher Instance()
-    {
-        return _instance;
-    }
-
-    public void Enqueue(Action action)
-    {
-        if (action == null) return;
-
-        lock (_executionQueue)
-        {
-            _executionQueue.Enqueue(action);
-        }
-    }
-
-    void Update()
-    {
-        lock (_executionQueue)
-        {
-            while (_executionQueue.Count > 0)
-            {
-                try
-                {
-                    _executionQueue.Dequeue().Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[MainThreadDispatcher] Error: {ex.Message}");
-                }
-            }
-        }
     }
 }

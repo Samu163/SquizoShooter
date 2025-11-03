@@ -267,7 +267,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   maxHealth: 100
   health: 100
-  healthBar: {fileID: 0}
   walkSpeed: 4
   sprintSpeed: 7
   jumpForce: 3
@@ -279,6 +278,7 @@ MonoBehaviour:
   verticalLimitMax: 90
   smoothMovement: 1
   smoothing: 10
+  visualModel: {fileID: 7989583440541540091}
 --- !u!1 &8166014812342378928
 GameObject:
   m_ObjectHideFlags: 0
