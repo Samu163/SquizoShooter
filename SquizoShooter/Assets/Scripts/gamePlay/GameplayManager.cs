@@ -115,8 +115,8 @@ public class GameplayManager : MonoBehaviour
         udpClient.StartConnection();
 
         // Show connected status
-        if (uiController != null)
-            uiController.ShowConnectedStatus();
+        //if (uiController != null)
+        //    uiController.ShowConnectedStatus();
 
         Debug.Log($"[GameplayManager] Host connected to own server");
         Debug.Log("========================================");
@@ -144,8 +144,8 @@ public class GameplayManager : MonoBehaviour
         udpClient.StartConnection();
 
         // Show connected status
-        if (uiController != null)
-            uiController.ShowConnectedStatus();
+        //if (uiController != null)
+        //    uiController.ShowConnectedStatus();
     }
 
     public void Disconnect()
