@@ -269,8 +269,8 @@ MonoBehaviour:
   health: 100
   walkSpeed: 10
   sprintSpeed: 15
-  jumpForce: 2
-  gravity: -10
+  jumpForce: 3
+  gravity: -30
   cameraTransform: {fileID: 4203585546040098731}
   mouseSensitivityX: 2
   mouseSensitivityY: 2
@@ -295,7 +295,7 @@ MonoBehaviour:
   wallRunMaxTime: 5
   wallRunGravity: 0
   wallRunMinForward: 0.2
-  wallRunSpeed: 7
+  wallRunSpeed: 10
   minWallAttachFallSpeed: -0.5
   wallReattachCooldown: 0.25
   wallAttachWindow: 0.35
