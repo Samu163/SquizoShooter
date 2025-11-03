@@ -14,7 +14,7 @@ public class UDPClient : MonoBehaviour
     [Header("Connection Settings")]
     public string serverIP = "127.0.0.1";
     public int serverPort = 9050;
-    [Tooltip("Si pones 0, el sistema asignar� un puerto autom�ticamente")]
+    [Tooltip("Si pones 0, el sistema asignará un puerto automáticamente")]
     public int clientPort = 0;
 
     [Header("Gameplay")]
@@ -38,7 +38,7 @@ public class UDPClient : MonoBehaviour
 
     public bool IsConnected => isConnected;
 
-    // Nueva propiedad p�blica para exponer la key local (lectura)
+    // Nueva propiedad pública para exponer la key local (lectura)
     public string ClientKey => clientKey;
 
     public void StartConnection()
@@ -145,6 +145,29 @@ public class UDPClient : MonoBehaviour
             SendCubeMovement(spawnPos);
             return;
         }
+
+        if (message.StartsWith("SHOOT_ANIM:"))
+        {
+            string shooterKey = message.Substring("SHOOT_ANIM:".Length);
+            if (shooterKey == clientKey) return;
+
+            SafeEnqueueMain(() =>
+            {
+                lock (cubesLock)
+                {
+                    if (playerCubes.TryGetValue(shooterKey, out GameObject cube) && cube != null)
+                    {
+                        var controller = cube.GetComponent<PlayerController>();
+                        if (controller != null)
+                        {
+                            controller.PlayShootAnimation();
+                        }
+                    }
+                }
+            });
+            return;
+        }
+
         if (message.StartsWith("PLAYERDATA:"))
         {
             string payload = message.Substring("PLAYERDATA:".Length);
@@ -171,13 +194,14 @@ public class UDPClient : MonoBehaviour
                         }
                         else
                         {
-                            // Si no existe el cubo (posible), simplemente loguear
                             Debug.LogWarning($"[Client] PLAYERDATA recibido para key desconocida: {key}");
                         }
                     }
                 });
             }
+            return;
         }
+
         if (message.StartsWith("MOVE:"))
         {
             string[] parts = message.Split(':');
@@ -237,6 +261,7 @@ public class UDPClient : MonoBehaviour
                     }
                 }
             });
+            return;
         }
 
         if (message.StartsWith("ROTATE"))
@@ -280,7 +305,9 @@ public class UDPClient : MonoBehaviour
                     }
                 }
             });
+            return;
         }
+
         if (message.StartsWith("HEAL_STATION_DATA:"))
         {
             string[] parts = message.Split(':');
@@ -301,7 +328,9 @@ public class UDPClient : MonoBehaviour
                     }
                 });
             }
+            return;
         }
+
         if (message.StartsWith("KILL_CONFIRMED:"))
         {
             string shooterKey = message.Substring("KILL_CONFIRMED:".Length);
@@ -321,6 +350,7 @@ public class UDPClient : MonoBehaviour
 
                 Debug.Log($"[Client] Kill confirmado para jugador local!");
             }
+            return;
         }
 
         if (message.StartsWith("GOODBYE:"))
@@ -329,6 +359,7 @@ public class UDPClient : MonoBehaviour
             SafeEnqueueMain(() => RemoveCube(key));
             if (uiController != null)
                 uiController.ShowPlayerLeft();
+            return;
         }
     }
 
@@ -368,7 +399,7 @@ public class UDPClient : MonoBehaviour
     {
         if (id == -1)
         {
-            Debug.LogError("Una HealStation tiene un ID de -1. �Asigna un ID �nico en el Inspector!", station);
+            Debug.LogError("Una HealStation tiene un ID de -1. ¡Asigna un ID único en el Inspector!", station);
             return;
         }
 
@@ -394,7 +425,7 @@ public class UDPClient : MonoBehaviour
         if (!isConnected || clientSocket == null) return;
         if (string.IsNullOrEmpty(clientKey))
         {
-            Debug.LogWarning("[Client] No tengo clientKey todav�a");
+            Debug.LogWarning("[Client] No tengo clientKey todavía");
             return;
         }
 
@@ -410,7 +441,7 @@ public class UDPClient : MonoBehaviour
         if (!isConnected || clientSocket == null) return;
         if (string.IsNullOrEmpty(clientKey))
         {
-            Debug.LogWarning("[Client] No tengo clientKey todav�a");
+            Debug.LogWarning("[Client] No tengo clientKey todavía");
             return;
         }
 
@@ -429,6 +460,7 @@ public class UDPClient : MonoBehaviour
         string message = string.Format(CultureInfo.InvariantCulture, "PLAYERDATA:{0}:{1:F1}", clientKey, health);
         SendRawMessage(message);
     }
+
     public void SendShotToServer(string targetKey, float damage)
     {
         if (!isConnected || clientSocket == null) return;
@@ -439,6 +471,17 @@ public class UDPClient : MonoBehaviour
         string message = $"SHOT:{clientKey}:{targetKey}:{dmgStr}";
         SendRawMessage(message);
     }
+
+    // NEW: broadcast shoot animation intent
+    public void SendShootAnim()
+    {
+        if (!isConnected || clientSocket == null) return;
+        if (string.IsNullOrEmpty(clientKey)) return;
+
+        string message = $"SHOOT_ANIM:{clientKey}";
+        SendRawMessage(message);
+    }
+
     public string GetKeyForGameObject(GameObject go)
     {
         if (go == null) return null;
@@ -495,7 +538,7 @@ public class UDPClient : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.LogError("[Client] Error ejecutando acci�n: " + e.Message);
+                Debug.LogError("[Client] Error ejecutando acción: " + e.Message);
             }
         }
     }

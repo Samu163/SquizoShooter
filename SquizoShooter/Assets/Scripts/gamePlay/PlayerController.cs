@@ -48,16 +48,20 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float wallRunGravity = -2f;
     [SerializeField] private float wallRunMinForward = 0.2f; // input mínimo hacia delante para iniciar wallrun
     [SerializeField] private float wallRunSpeed = 5f;
-
     [SerializeField] private float minWallAttachFallSpeed = -0.5f; // debes estar cayendo al menos este valor para enganchar
     [SerializeField] private float wallReattachCooldown = 0.25f;   // tiempo mínimo tras wall-jump para volver a enganchar
-
     [SerializeField] private float wallAttachWindow = 0.35f;
+    [SerializeField] private float wallJumpCoyoteTime = 0.2f; // ventana para saltar tras dejar la pared (estilo Lucio)
+    [SerializeField] private float wallStickDistance = 0.5f;  // NUEVO: distancia adicional de adherencia al muro para mantener el wallrun al rotar
 
     [Header("Slide Settings")]
     [SerializeField] private float slideDuration = 0.9f;
     [SerializeField] private float slideSpeedMultiplier = 1.6f;
     [SerializeField] private float slideHeightMultiplier = 0.5f;
+    [SerializeField] private float slideMinSpeed = 7f; // velocidad horizontal mínima para permitir slide
+
+    [Header("Gun Visual Settings")]
+    [SerializeField] private Animator Animator;
 
     // Network/Multiplayer
     private UDPClient udpClient;
@@ -87,11 +91,12 @@ public class PlayerController : MonoBehaviour
 
     // Wall states
     private bool isWallRiding = false;   // frontal wall slide
-    private bool isWallRunning = false;  // lateral wallrun
+    private bool isWallRunning = false;  // lateral wallrun (Lucio-style hold Space)
     private Vector3 currentWallNormal = Vector3.zero;
     private Vector3 lastWallNormal = Vector3.zero;
     private float wallRunTimer = 0f;
     private int wallRunSide = 0; // -1 left, 1 right
+    private float lastWallRunEndTime = -10f; // para coyote time tras dejar la pared
 
     // Para evitar re-attach tras wall-jump
     private float lastWallJumpTime = -10f;
@@ -194,13 +199,13 @@ public class PlayerController : MonoBehaviour
 
         // Inputs y estados
         HandleSlideInput();
-        DetectWallRun();      // detecta y activa wallrun
+        DetectWallRun();      // detecta y activa/termina wallrun (Lucio-style)
         HandleShooting();
 
         // Movimiento y física
         HandleMovement();
         HandleCamera();
-        HandleJump(); // maneja salto normal y salto desde slide
+        HandleJump(); // maneja salto normal, salto desde slide y salto desde pared (tap Space)
         SendPositionToServer();
         SendRotationToServer();
         SendPlayerDataToServer();
@@ -245,6 +250,7 @@ public class PlayerController : MonoBehaviour
             if (Time.time - lastFireTime < cooldown) return;
             lastFireTime = Time.time;
 
+
             TryShoot();
             ApplyRecoil();
         }
@@ -252,7 +258,17 @@ public class PlayerController : MonoBehaviour
 
     void TryShoot()
     {
+
         if (cameraTransform == null) return;
+
+        // Local animation
+        Animator.SetTrigger("shoot");
+
+        // Notify others about the shoot animation
+        if (udpClient != null && udpClient.IsConnected)
+        {
+            udpClient.SendShootAnim();
+        }
 
         Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
         RaycastHit[] hits = Physics.RaycastAll(ray, shootRange);
@@ -348,16 +364,22 @@ public class PlayerController : MonoBehaviour
         float moveX = Input.GetAxis("Horizontal");
         float moveZ = Input.GetAxis("Vertical");
 
-        // Si estamos wallrunning, forzamos movimiento a lo largo de la pared
+        // Si estamos wallrunning (Lucio-style), mover según las teclas proyectadas en el plano de la pared
         if (isWallRunning)
         {
-            Vector3 wallForward = Vector3.Cross(lastWallNormal, Vector3.up).normalized;
-            if (Vector3.Dot(wallForward, transform.forward) < 0f) wallForward = -wallForward;
+            // Construir input en mundo y proyectarlo sobre el plano de la pared
+            Vector3 inputWorld = (transform.right * moveX + transform.forward * moveZ);
+            Vector3 wallDir = Vector3.ProjectOnPlane(inputWorld, lastWallNormal);
+            if (wallDir.sqrMagnitude > 0.0001f)
+            {
+                wallDir.Normalize();
+                controller.Move(wallDir * wallRunSpeed * Time.deltaTime);
+            }
 
-            Vector3 moveDir = wallForward * Mathf.Max(0f, moveZ);
-            controller.Move(moveDir * wallRunSpeed * Time.deltaTime);
+            // Pequeña fuerza de adherencia para no separarnos al girar
+            controller.Move(-lastWallNormal * 0.5f * Time.deltaTime);
 
-            // reducir gravedad
+            // reducir gravedad mientras corremos por pared
             verticalVelocity.y = wallRunGravity;
             controller.Move(verticalVelocity * Time.deltaTime);
             return;
@@ -369,7 +391,7 @@ public class PlayerController : MonoBehaviour
 
         controller.Move(movement * currentSpeed * Time.deltaTime);
 
-        // Aplicar gravedad (si no estamos en wallride)
+        // Aplicar gravedad (si no estamos en wallride frontal)
         if (!isWallRiding)
         {
             verticalVelocity.y += gravity * Time.deltaTime;
@@ -420,8 +442,10 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // detect frontal wall for slide
-        Vector3 origin = transform.position + Vector3.up * (controller.height * 0.5f);
+        bool jumpHeld = Input.GetButton("Jump");
+
+        // detect frontal wall for slide (sin cambios)
+        Vector3 origin = transform.position + Vector3.up * (controller != null ? controller.height * 0.5f : 0.9f);
         Vector3 forward = transform.forward;
         if (Physics.Raycast(origin, forward, out RaycastHit frontHit, wallCheckDistance))
         {
@@ -441,18 +465,16 @@ public class PlayerController : MonoBehaviour
             currentWallNormal = Vector3.zero;
         }
 
-        // Detect walls on left/right for wallrun
-        float forwardInput = Input.GetAxis("Vertical");
-        if (forwardInput > wallRunMinForward && !isGrounded && (verticalVelocity.y < minWallAttachFallSpeed || (Time.time - lastJumpTime) <= wallAttachWindow))
+        // Lucio-style: solo iniciar/ mantener wallrun lateral si se mantiene Space (Jump) y estamos en el aire
+        if (jumpHeld && !isGrounded)
         {
             // check right
-            Vector3 rightOrigin = origin;
-            if (Physics.Raycast(rightOrigin, transform.right, out RaycastHit rightHit, wallCheckDistance))
+            if (Physics.Raycast(origin, transform.right, out RaycastHit rightHit, wallCheckDistance))
             {
                 if (rightHit.collider.CompareTag("Wall"))
                 {
                     // evitar re-attach inmediato al mismo wall desde el mismo normal
-                    if (Time.time - lastWallJumpTime > wallReattachCooldown && !IsSameWallNormal(lastWallJumpNormal, rightHit.normal))
+                    if (!isWallRunning && Time.time - lastWallJumpTime > wallReattachCooldown && !IsSameWallNormal(lastWallJumpNormal, rightHit.normal))
                     {
                         StartWallRun(rightHit.normal, 1);
                         return;
@@ -465,7 +487,7 @@ public class PlayerController : MonoBehaviour
             {
                 if (leftHit.collider.CompareTag("Wall"))
                 {
-                    if (Time.time - lastWallJumpTime > wallReattachCooldown && !IsSameWallNormal(lastWallJumpNormal, leftHit.normal))
+                    if (!isWallRunning && Time.time - lastWallJumpTime > wallReattachCooldown && !IsSameWallNormal(lastWallJumpNormal, leftHit.normal))
                     {
                         StartWallRun(leftHit.normal, -1);
                         return;
@@ -474,11 +496,17 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // If no lateral walls detected, end wallrun
+        // Si no mantenemos Space, terminar wallrun
+        if (isWallRunning && !jumpHeld)
+        {
+            EndWallRun();
+            return;
+        }
+
+        // Mantener wallrun aunque gires la cámara: comprobar cercanía usando la normal almacenada
         if (isWallRunning)
         {
-            // small cooldown to prevent flicker
-            if (wallRunTimer > 0.15f && !IsNearWallSide()) EndWallRun();
+            if (wallRunTimer > 0.1f && !IsStillOnWall()) EndWallRun();
         }
     }
 
@@ -487,9 +515,24 @@ public class PlayerController : MonoBehaviour
         return Vector3.Distance(a, b) < sameWallNormalTolerance;
     }
 
+    // NUEVO: comprobación robusta de cercanía a la pared usando la normal almacenada, independiente de hacia dónde miras
+    bool IsStillOnWall()
+    {
+        if (lastWallNormal == Vector3.zero) return false;
+        Vector3 origin = transform.position + Vector3.up * (controller != null ? controller.height * 0.5f : 0.9f);
+        float maxDist = wallCheckDistance + wallStickDistance;
+
+        // SphereCast para tolerancia; lanza hacia la pared (opuesto a la normal)
+        if (Physics.SphereCast(origin, 0.25f, -lastWallNormal, out RaycastHit hit, maxDist))
+        {
+            return hit.collider != null && hit.collider.CompareTag("Wall");
+        }
+        return false;
+    }
+
     bool IsNearWallSide()
     {
-        Vector3 origin = transform.position + Vector3.up * (controller.height * 0.5f);
+        Vector3 origin = transform.position + Vector3.up * (controller != null ? controller.height * 0.5f : 0.9f);
         if (Physics.Raycast(origin, transform.right, out RaycastHit r, wallCheckDistance) && r.collider.CompareTag("Wall")) return true;
         if (Physics.Raycast(origin, -transform.right, out RaycastHit l, wallCheckDistance) && l.collider.CompareTag("Wall")) return true;
         return false;
@@ -500,53 +543,49 @@ public class PlayerController : MonoBehaviour
         if (isWallRunning) return;
         isWallRunning = true;
         isWallRiding = false;
-        lastWallNormal = wallNormal;
+        lastWallNormal = wallNormal; // conservar normal para posible coyote jump y comprobación de cercanía
         wallRunSide = side;
         wallRunTimer = 0f;
-        // optionally adjust verticalVelocity to reduce drop
+        // ajustar verticalVelocity para reducir caída
         verticalVelocity.y = Mathf.Max(verticalVelocity.y, wallRunGravity);
     }
 
     void EndWallRun()
     {
+        if (!isWallRunning) return;
         isWallRunning = false;
         wallRunTimer = 0f;
         wallRunSide = 0;
-        lastWallNormal = Vector3.zero;
+        lastWallRunEndTime = Time.time; // para coyote time
+        // no limpiamos lastWallNormal: lo usamos para el salto con coyote
     }
 
     void HandleJump()
     {
-        // Wall jump: si estamos wallrunning o en wall slide frontal, y solo si estamos cayendo o hemos saltado recientemente
-        if ((isWallRunning || isWallRiding) && Input.GetButtonDown("Jump") && (verticalVelocity.y < 0f || (Time.time - lastJumpTime) <= wallAttachWindow))
+        // Lucio-style: si estamos wallrunning y hacemos tap (GetButtonDown), saltar desde la pared
+        if (isWallRunning && Input.GetButtonDown("Jump"))
         {
-            // salto normal vertical
-            verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+            DoWallJumpFromNormal(lastWallNormal);
+            return;
+        }
 
-            // Empuje lateral: si wallrunning, empujar fuera de la pared
-            Vector3 push = Vector3.zero;
-            if (isWallRunning)
-            {
-                push = lastWallNormal * wallJumpPush;
-                EndWallRun();
-            }
-            else if (isWallRiding)
-            {
-                push = currentWallNormal * wallJumpPush;
-                isWallRiding = false;
-            }
+        // Coyote time: poco después de dejar una pared, permitir salto con Space para impulsarnos
+        if (!isWallRunning && (Time.time - lastWallRunEndTime) <= wallJumpCoyoteTime && Input.GetButtonDown("Jump"))
+        {
+            DoWallJumpFromNormal(lastWallNormal);
+            return;
+        }
+
+        // Wall slide frontal: permitir salto alejándonos de la pared
+        if (isWallRiding && Input.GetButtonDown("Jump"))
+        {
+            verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+            Vector3 push = currentWallNormal * wallJumpPush;
+            isWallRiding = false;
 
             // Registrar wall-jump para evitar re-attach inmediato
             lastWallJumpTime = Time.time;
-            // Guardar la normal de la pared desde la que saltamos (no la inversa)
-            if (isWallRunning)
-                lastWallJumpNormal = lastWallNormal.normalized;
-            else if (isWallRiding)
-                lastWallJumpNormal = currentWallNormal.normalized;
-            else
-                lastWallJumpNormal = Vector3.zero;
-
-            // Registrar como salto reciente también
+            lastWallJumpNormal = currentWallNormal.normalized;
             lastJumpTime = Time.time;
 
             controller.Move(push * Time.deltaTime);
@@ -569,10 +608,28 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    // Aplica impulso de salto y empuje alejándonos de la pared dada por su normal
+    void DoWallJumpFromNormal(Vector3 wallNormal)
+    {
+        verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+        Vector3 push = wallNormal.normalized * wallJumpPush;
+
+        EndWallRun(); // nos despegamos de la pared
+        lastWallJumpTime = Time.time;
+        lastWallJumpNormal = wallNormal.normalized;
+        lastJumpTime = Time.time;
+
+        controller.Move(push * Time.deltaTime);
+    }
+
     void HandleSlideInput()
     {
-        // Iniciar slide: debe estar en suelo, correr (LeftShift) y pulsar LeftControl
-        if (!isSliding && isGrounded && Input.GetKeyDown(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift))
+        // Iniciar slide: debe estar en suelo, pulsar LeftControl y tener velocidad horizontal >= umbral
+        float horizontalSpeed = controller != null
+            ? new Vector3(controller.velocity.x, 0f, controller.velocity.z).magnitude
+            : 0f;
+
+        if (!isSliding  && Input.GetKeyDown(KeyCode.LeftControl) && horizontalSpeed >= slideMinSpeed)
         {
             StartSlide();
         }
@@ -786,6 +843,15 @@ public class PlayerController : MonoBehaviour
     {
         mouseSensitivityX = sensX;
         mouseSensitivityY = sensY;
+    }
+
+    // Public API to play shoot animation for remote players
+    public void PlayShootAnimation()
+    {
+        if (Animator != null)
+        {
+            Animator.SetTrigger("shoot");
+        }
     }
 
     public void UpdatePosition(Vector3 position)

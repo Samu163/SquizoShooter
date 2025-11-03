@@ -94,21 +94,14 @@ public class UDPServer : MonoBehaviour
             {
                 connectedClients[newKey] = remote;
                 playerPositions[newKey] = Vector3.zero;
-                // Inicializar salud por defecto (100)
                 playerHealth[newKey] = 100f;
             }
 
             SendMessageToClient($"WELCOME:{newKey}", remote);
 
-            // Enviar posiciones y salud de todos los jugadores existentes al nuevo cliente
             SendAllPlayerPositionsToSingleClient(newKey, remote);
-
-            // --- NUEVO ---
-            // Enviar estado de todas las heal stations al nuevo cliente
             SendAllHealStationStatesToSingleClient(remote);
-            // -----------
 
-            // Notificar a todos sobre el nuevo jugador
             BroadcastMove(newKey, Vector3.zero);
             BroadcastPlayerHealth(newKey, 100f);
         }
@@ -132,7 +125,13 @@ public class UDPServer : MonoBehaviour
                 BroadcastPlayerHealth(senderKey, health);
             }
         }
-
+        else if (message.StartsWith("SHOOT_ANIM:"))
+        {
+            // SHOOT_ANIM:<shooterKey>
+            string shooterKey = message.Substring("SHOOT_ANIM:".Length);
+            Debug.Log($"[Server] SHOOT_ANIM de {shooterKey}");
+            BroadcastShootAnim(shooterKey);
+        }
         else if (message.StartsWith("SHOT:"))
         {
             // Formato: SHOT:<shooterKey>:<targetKey>:<damage>
@@ -229,7 +228,7 @@ public class UDPServer : MonoBehaviour
                     }
                 }
 
-                Debug.Log($"[Server] Actualizando posici�n de {senderKey}: {newPos}");
+                Debug.Log($"[Server] Actualizando posición de {senderKey}: {newPos}");
                 BroadcastMove(senderKey, newPos);
             }
             else
@@ -272,7 +271,7 @@ public class UDPServer : MonoBehaviour
                         playerRotations[senderKey] = newRot;
                     }
                 }
-                Debug.Log($"[Server] Actualizando rotaci�n de {senderKey}: {newRot}");
+                Debug.Log($"[Server] Actualizando rotación de {senderKey}: {newRot}");
                 BroadcastRotate(senderKey, newRot);
             }
             else
@@ -280,7 +279,6 @@ public class UDPServer : MonoBehaviour
                 Debug.LogWarning($"[Server] Error parseando coordenadas: {coords}");
             }
         }
-
         else if (message.StartsWith("HEAL_REQUEST:"))
         {
             string[] parts = message.Split(':');
@@ -293,7 +291,7 @@ public class UDPServer : MonoBehaviour
             string senderKey = parts[1];
             if (!int.TryParse(parts[2], out int stationID))
             {
-                Debug.LogWarning($"[Server] HEAL_REQUEST ID de estaci�n inv�lido: {parts[2]}");
+                Debug.LogWarning($"[Server] HEAL_REQUEST ID de estación inválido: {parts[2]}");
                 return;
             }
 
@@ -304,12 +302,12 @@ public class UDPServer : MonoBehaviour
             {
                 if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
                 {
-                    Debug.Log($"[Server] Petici�n de cura para {stationID} denegada (ya en cooldown).");
+                    Debug.Log($"[Server] Petición de cura para {stationID} denegada (ya en cooldown).");
                     wasApproved = false;
                 }
                 else
                 {
-                    Debug.Log($"[Server] Petici�n de cura para {stationID} APROBADA. Iniciando cooldown.");
+                    Debug.Log($"[Server] Petición de cura para {stationID} APROBADA. Iniciando cooldown.");
                     wasApproved = true;
 
                     healStationStates[stationID] = true;
@@ -322,7 +320,6 @@ public class UDPServer : MonoBehaviour
                 }
             }
 
-            
             if (wasApproved)
             {  
                 if (newHealth > 0)
@@ -338,7 +335,6 @@ public class UDPServer : MonoBehaviour
                 );
             }
         }
-
         else if (message.StartsWith("GOODBYE:"))
         {
             string key = message.Substring("GOODBYE:".Length);
@@ -387,7 +383,7 @@ public class UDPServer : MonoBehaviour
             {
                 string key = kv.Key;
 
-                // No enviar al nuevo cliente su propia posici�n
+                // No enviar al nuevo cliente su propia posición
                 if (key == newKey)
                     continue;
 
@@ -406,7 +402,7 @@ public class UDPServer : MonoBehaviour
                     SendMessageToClient(healthMsg, remote);
                 }
 
-                // Peque�o delay para evitar que lleguen todos los mensajes a la vez
+                // Pequeño delay para evitar que lleguen todos los mensajes a la vez
                 Thread.Sleep(5);
             }
         }
@@ -511,10 +507,27 @@ public class UDPServer : MonoBehaviour
         }
     }
 
-    // --- NUEVA FUNCI�N ---
+    // NEW: broadcast shoot animation to all clients
+    void BroadcastShootAnim(string shooterKey)
+    {
+        string msg = $"SHOOT_ANIM:{shooterKey}";
+        byte[] data = Encoding.UTF8.GetBytes(msg);
+
+        List<EndPoint> snapshot;
+        lock (clientsLock)
+        {
+            snapshot = new List<EndPoint>(connectedClients.Values);
+        }
+
+        foreach (var ep in snapshot)
+        {
+            try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
+            catch (Exception e) { Debug.LogWarning("[Server] Error enviando SHOOT_ANIM: " + e.Message); }
+        }
+    }
+
     void BroadcastHealStationState(int stationID, int stateCode)
     {
-        // stateCode: 1 = en cooldown, 0 = disponible
         string msg = $"HEAL_STATION_DATA:{stationID}:{stateCode}";
         byte[] data = Encoding.UTF8.GetBytes(msg);
 
@@ -532,7 +545,6 @@ public class UDPServer : MonoBehaviour
             catch (Exception e) { Debug.LogWarning("[Server] Error enviando HEAL_STATION_DATA: " + e.Message); }
         }
     }
-    // ----------------------
 
     void SendMessageToClient(string message, EndPoint remote)
     {
