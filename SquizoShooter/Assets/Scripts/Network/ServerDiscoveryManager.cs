@@ -14,11 +14,15 @@ public class ServerDiscoveryManager : MonoBehaviour
     private UdpClient discoveryListener;
     private Thread discoveryThread;
     private volatile bool isRunning = false;
+    private volatile bool serverFound = false;
 
-    // Events
     public event Action<string, int> OnServerFound;
 
-    // Start broadcasting server information
+    public bool IsSearching()
+    {
+        return isRunning && !serverFound;
+    }
+
     public void StartBroadcasting(string serverIP, int serverPort)
     {
         if (isRunning)
@@ -28,13 +32,12 @@ public class ServerDiscoveryManager : MonoBehaviour
         }
 
         isRunning = true;
+        serverFound = false;
         discoveryThread = new Thread(() => BroadcastLoop(serverIP, serverPort)) { IsBackground = true };
         discoveryThread.Start();
 
         Debug.Log($"[ServerDiscovery] Started broadcasting: {serverIP}:{serverPort}");
     }
-
-    // Start listening for server broadcasts
     public void StartListening()
     {
         if (isRunning)
@@ -44,6 +47,7 @@ public class ServerDiscoveryManager : MonoBehaviour
         }
 
         isRunning = true;
+        serverFound = false;
         discoveryThread = new Thread(ListenLoop) { IsBackground = true };
         discoveryThread.Start();
 
@@ -106,7 +110,11 @@ public class ServerDiscoveryManager : MonoBehaviour
     {
         try
         {
-            discoveryListener = new UdpClient(discoveryPort);
+            discoveryListener = new UdpClient();
+            discoveryListener.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            discoveryListener.Client.Bind(new IPEndPoint(IPAddress.Any, discoveryPort));
+
+
             discoveryListener.EnableBroadcast = true;
             discoveryListener.Client.ReceiveTimeout = 10000;
 
@@ -114,7 +122,7 @@ public class ServerDiscoveryManager : MonoBehaviour
 
             IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
 
-            while (isRunning)
+            while (isRunning && !serverFound)
             {
                 try
                 {
@@ -134,6 +142,7 @@ public class ServerDiscoveryManager : MonoBehaviour
                             {
                                 Debug.Log($"[ServerDiscovery] Found server at {serverIP}:{serverPort}");
 
+                                serverFound = true;
                                 isRunning = false;
 
                                 // Trigger event on main thread
