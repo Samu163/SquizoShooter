@@ -127,7 +127,7 @@ GameObject:
   - component: {fileID: 4277076236291555110}
   m_Layer: 0
   m_Name: PlayerController
-  m_TagString: Untagged
+  m_TagString: Player
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -279,6 +279,7 @@ MonoBehaviour:
   smoothMovement: 1
   smoothing: 10
   visualModel: {fileID: 7989583440541540091}
+  playerCamera: {fileID: 4289920988945353161}
 --- !u!1 &8166014812342378928
 GameObject:
   m_ObjectHideFlags: 0
@@ -293,7 +294,7 @@ GameObject:
   - component: {fileID: 5273968255224701953}
   m_Layer: 0
   m_Name: Camera
-  m_TagString: Untagged
+  m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0

@@ -27,6 +27,7 @@ public class UDPClient : MonoBehaviour
     private string clientKey = null;
     private readonly object cubesLock = new object();
     private Dictionary<string, GameObject> playerCubes = new Dictionary<string, GameObject>();
+    public List <LookAtPlayer> AllItems = new List<LookAtPlayer>();
 
     private Queue<Action> mainThreadActions = new Queue<Action>();
     private readonly object mainThreadLock = new object();
@@ -125,6 +126,10 @@ public class UDPClient : MonoBehaviour
             {
                 move.SetAsLocalPlayer(true);
                 move.enabled = true;
+                foreach (var item in AllItems)
+                {
+                    item.AssignCamera(move.playerCamera);
+                }
             }
 
             if (uiController != null)

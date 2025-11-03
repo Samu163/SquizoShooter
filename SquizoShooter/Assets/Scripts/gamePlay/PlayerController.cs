@@ -28,7 +28,7 @@ public class PlayerController : MonoBehaviour
     // Network/Multiplayer
     private UDPClient udpClient;
     private bool isLocalPlayer = false;
-    private Camera playerCamera;
+    public Camera playerCamera;
 
     // Death state
     private bool isDead = false;
@@ -58,12 +58,12 @@ public class PlayerController : MonoBehaviour
     {
         controller = GetComponent<CharacterController>();
         udpClient = FindObjectOfType<UDPClient>();
-        playerCamera = GetComponent<Camera>();
+        //playerCamera = GetComponent<Camera>();
 
-        if (playerCamera == null && cameraTransform != null)
-        {
-            playerCamera = cameraTransform.GetComponent<Camera>();
-        }
+        //if (playerCamera == null && cameraTransform != null)
+        //{
+        //    playerCamera = cameraTransform.GetComponent<Camera>();
+        //}
         if (playerCamera == null)
         {
             playerCamera = Camera.main;
