@@ -341,7 +341,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &188963195
 Transform:
   m_ObjectHideFlags: 0
@@ -890,7 +890,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &498703812
 Transform:
   m_ObjectHideFlags: 0
@@ -1436,7 +1436,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &798402070
 Transform:
   m_ObjectHideFlags: 0
@@ -1487,11 +1487,6 @@ MonoBehaviour:
   uiController: {fileID: 1056391047}
   spawnPoints:
   - {fileID: 1514942498}
-  - {fileID: 2123391394}
-  - {fileID: 798402070}
-  - {fileID: 188963195}
-  - {fileID: 2093684325}
-  - {fileID: 498703812}
   baseServerPort: 9050
 --- !u!4 &819925764
 Transform:
@@ -3574,7 +3569,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &2093684325
 Transform:
   m_ObjectHideFlags: 0
@@ -3632,7 +3627,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &2123391394
 Transform:
   m_ObjectHideFlags: 0
