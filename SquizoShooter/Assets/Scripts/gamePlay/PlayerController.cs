@@ -1,5 +1,6 @@
 using UnityEngine;
 
+
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
@@ -25,6 +26,20 @@ public class PlayerController : MonoBehaviour
     [Header("Visual Settings")]
     [SerializeField] private GameObject visualModel;
 
+    [Header("Shooting")]
+    [SerializeField] private float shootRange = 100f;
+    [SerializeField] private float shootDamage = 25f;
+    [SerializeField] private float fireRate = 4f; // disparos por segundo
+    [SerializeField] private float recoilPitch = 5f; // subida de cámara
+    [SerializeField] private float recoilYaw = 1f;   // desviación horizontal
+    [SerializeField] private float recoilBack = 0.2f; // pequeño retroceso físico
+
+    [Header("Gizmos (editor)")]
+    [SerializeField] private bool showShootGizmos = true;
+    [SerializeField] private Color gizmoLineColor = Color.red;
+    [SerializeField] private Color gizmoHitColor = Color.yellow;
+    [SerializeField] private float gizmoHitRadius = 0.25f;
+
     // Network/Multiplayer
     private UDPClient udpClient;
     private bool isLocalPlayer = false;
@@ -48,12 +63,13 @@ public class PlayerController : MonoBehaviour
     private const float rotationThreshold = 0.5f;
     private const float healthThreshold = 0.01f;
 
-    
+    // Shooting cadence
+    private float lastFireTime = 0f;
 
     public bool IsLocalPlayer => isLocalPlayer;
     public bool IsDead => isDead;
 
-  
+
     void Start()
     {
         controller = GetComponent<CharacterController>();
@@ -118,6 +134,9 @@ public class PlayerController : MonoBehaviour
             {
                 rotationX -= 360f;
             }
+
+            targetRotationX = rotationX;
+            targetRotationY = rotationY;
         }
     }
 
@@ -135,6 +154,7 @@ public class PlayerController : MonoBehaviour
         HandleMovement();
         HandleCamera();
         HandleJump();
+        HandleShooting();
         SendPositionToServer();
         SendRotationToServer();
         SendPlayerDataToServer();
@@ -146,6 +166,82 @@ public class PlayerController : MonoBehaviour
         }
 
         CheckDeath();
+    }
+
+    void HandleShooting()
+    {
+        if (playerCamera == null || udpClient == null) return;
+
+        if (Input.GetButtonDown("Fire1"))
+        {
+            float cooldown = 1f / Mathf.Max(0.0001f, fireRate);
+            if (Time.time - lastFireTime < cooldown) return;
+            lastFireTime = Time.time;
+
+            TryShoot();
+            ApplyRecoil();
+        }
+    }
+
+    void TryShoot()
+    {
+        if (cameraTransform == null) return;
+
+        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+        if (Physics.Raycast(ray, out RaycastHit hit, shootRange))
+        {
+            // Buscar en la jerarquía un GameObject con tag "Player"
+            Transform t = hit.collider.transform;
+            while (t != null && !t.CompareTag("Player"))
+            {
+                t = t.parent;
+            }
+
+            if (t == null)
+            {
+                // no es un jugador
+                Debug.Log("[PlayerController] Disparo: no hit a un objeto con tag 'Player'");
+                return;
+            }
+
+            GameObject hitPlayerGO = t.gameObject;
+
+            if (udpClient == null)
+            {
+                Debug.LogWarning("[PlayerController] No hay UDPClient para enviar SHOT.");
+                return;
+            }
+
+            string targetKey = udpClient.GetKeyForGameObject(hitPlayerGO);
+            if (string.IsNullOrEmpty(targetKey))
+            {
+                Debug.LogWarning("[PlayerController] Disparo: no existe key para el GameObject golpeado.");
+                return;
+            }
+
+            // Evitar autodaño: si la key objetivo es la misma que la nuestra, ignorar
+            if (udpClient.ClientKey == targetKey)
+            {
+                Debug.Log("[PlayerController] Disparo ignorado: targetKey == ClientKey (self-hit).");
+                return;
+            }
+
+            // Enviar disparo al servidor (servidor aplicará daño y retransmitirá PLAYERDATA)
+            udpClient.SendShotToServer(targetKey, shootDamage);
+        }
+    }
+
+    void ApplyRecoil()
+    {
+        // Modificar rotaciones objetivo para que HandleCamera haga la interpolación visible
+        targetRotationY += Random.Range(-recoilYaw, recoilYaw);
+        targetRotationX = Mathf.Clamp(targetRotationX - recoilPitch, verticalLimitMin, verticalLimitMax);
+
+        // Aplicar un pequeño retroceso físico inmediato
+        if (controller != null)
+        {
+            controller.Move(-transform.forward * recoilBack);
+        }
     }
 
     void HandleMovement()
@@ -305,10 +401,10 @@ public class PlayerController : MonoBehaviour
             HealthBarUI.instance.UpdateUI(health, maxHealth);
         }
 
-        
+
         if (udpClient != null && udpClient.IsConnected)
         {
-            lastSentPosition = Vector3.zero; 
+            lastSentPosition = Vector3.zero;
             udpClient.SendCubeMovement(spawnPos);
             udpClient.SendPlayerHealth(health);
         }
@@ -439,6 +535,37 @@ public class PlayerController : MonoBehaviour
         if (isLocalPlayer && HealthBarUI.instance != null)
         {
             HealthBarUI.instance.UpdateUI(health, maxHealth);
+        }
+    }
+
+    // Draw shooting gizmos in Scene view (line + hit sphere).
+    void OnDrawGizmos()
+    {
+        if (!showShootGizmos) return;
+
+        // En modo Play dibujar solo para el jugador local (evita mucho ruido)
+        if (Application.isPlaying && !isLocalPlayer) return;
+
+        Transform camTransform = cameraTransform;
+        if (camTransform == null && playerCamera != null) camTransform = playerCamera.transform;
+        if (camTransform == null) return;
+
+        Vector3 origin = camTransform.position;
+        Vector3 dir = camTransform.forward;
+
+        // Raycast visual (editor + play)
+        if (Physics.Raycast(origin, dir, out RaycastHit hit, shootRange))
+        {
+            Gizmos.color = gizmoLineColor;
+            Gizmos.DrawLine(origin, hit.point);
+
+            Gizmos.color = gizmoHitColor;
+            Gizmos.DrawWireSphere(hit.point, gizmoHitRadius);
+        }
+        else
+        {
+            Gizmos.color = gizmoLineColor;
+            Gizmos.DrawLine(origin, origin + dir * shootRange);
         }
     }
 }

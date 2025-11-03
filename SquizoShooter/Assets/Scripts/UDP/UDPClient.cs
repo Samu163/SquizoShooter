@@ -1,18 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using UnityEngine;
-using System.Globalization;
+
+
 
 public class UDPClient : MonoBehaviour
 {
     [Header("Connection Settings")]
     public string serverIP = "127.0.0.1";
     public int serverPort = 9050;
-    [Tooltip("Si pones 0, el sistema asignará un puerto automáticamente")]
+    [Tooltip("Si pones 0, el sistema asignarï¿½ un puerto automï¿½ticamente")]
     public int clientPort = 0;
 
     [Header("Gameplay")]
@@ -35,6 +37,9 @@ public class UDPClient : MonoBehaviour
     private readonly object mainThreadLock = new object();
 
     public bool IsConnected => isConnected;
+
+    // Nueva propiedad pï¿½blica para exponer la key local (lectura)
+    public string ClientKey => clientKey;
 
     public void StartConnection()
     {
@@ -150,8 +155,6 @@ public class UDPClient : MonoBehaviour
             string key = payload.Substring(0, sep);
             string valueStr = payload.Substring(sep + 1);
 
-            //if (key == clientKey) return; // ignorar datos propios
-
             if (float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out float health))
             {
                 SafeEnqueueMain(() =>
@@ -166,6 +169,11 @@ public class UDPClient : MonoBehaviour
                                 controller.UpdateHealth(health);
                                 Debug.Log($"[Client] Actualizada salud de {key} a {health}");
                             }
+                        }
+                        else
+                        {
+                            // Si no existe el cubo (posible), simplemente loguear
+                            Debug.LogWarning($"[Client] PLAYERDATA recibido para key desconocida: {key}");
                         }
                     }
                 });
@@ -287,7 +295,7 @@ public class UDPClient : MonoBehaviour
                 // Convertimos el 0/1 a booleano
                 bool isCooldown = (stateCode == 1);
 
-                // --- ¡AÑADE ESTE LOG! ---
+                // --- ï¿½Aï¿½ADE ESTE LOG! ---
                 Debug.LogWarning($"[Client] Recibido HEAL_STATION_DATA. ID: {stationID}, Cooldown: {isCooldown}");
                 // -------------------------
 
@@ -297,7 +305,7 @@ public class UDPClient : MonoBehaviour
                     {
                         if (healStations.TryGetValue(stationID, out HealStation station))
                         {
-                            // Llamamos a la nueva función unificada
+                            // Llamamos a la nueva funciï¿½n unificada
                             station.SetNetworkState(isCooldown);
                         }
                     }
@@ -350,7 +358,7 @@ public class UDPClient : MonoBehaviour
     {
         if (id == -1)
         {
-            Debug.LogError("Una HealStation tiene un ID de -1. ¡Asigna un ID único en el Inspector!", station);
+            Debug.LogError("Una HealStation tiene un ID de -1. ï¿½Asigna un ID ï¿½nico en el Inspector!", station);
             return;
         }
 
@@ -365,13 +373,13 @@ public class UDPClient : MonoBehaviour
         }
     }
 
-    // --- 3. Añade esta nueva función PÚBLICA para ENVIAR ---
-    // La HealStation llamará a esto en OnTriggerEnter()
+    // --- 3. Aï¿½ade esta nueva funciï¿½n Pï¿½BLICA para ENVIAR ---
+    // La HealStation llamarï¿½ a esto en OnTriggerEnter()
     public void SendHealRequest(int stationID)
     {
         if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
 
-        // El servidor recibirá "HEAL_REQUEST:ID_JUGADOR:ID_ESTACION"
+        // El servidor recibirï¿½ "HEAL_REQUEST:ID_JUGADOR:ID_ESTACION"
         string message = $"HEAL_REQUEST:{clientKey}:{stationID}";
         SendRawMessage(message);
     }
@@ -380,7 +388,7 @@ public class UDPClient : MonoBehaviour
         if (!isConnected || clientSocket == null) return;
         if (string.IsNullOrEmpty(clientKey))
         {
-            Debug.LogWarning("[Client] No tengo clientKey todavía");
+            Debug.LogWarning("[Client] No tengo clientKey todavï¿½a");
             return;
         }
 
@@ -396,7 +404,7 @@ public class UDPClient : MonoBehaviour
         if (!isConnected || clientSocket == null) return;
         if (string.IsNullOrEmpty(clientKey))
         {
-            Debug.LogWarning("[Client] No tengo clientKey todavía");
+            Debug.LogWarning("[Client] No tengo clientKey todavï¿½a");
             return;
         }
 
@@ -414,6 +422,33 @@ public class UDPClient : MonoBehaviour
 
         string message = string.Format(CultureInfo.InvariantCulture, "PLAYERDATA:{0}:{1:F1}", clientKey, health);
         SendRawMessage(message);
+    }
+
+    // Nuevo: enviar un disparo al servidor (servidor aplicarï¿½ daï¿½o al objetivo)
+    public void SendShotToServer(string targetKey, float damage)
+    {
+        if (!isConnected || clientSocket == null) return;
+        if (string.IsNullOrEmpty(clientKey)) return;
+        if (string.IsNullOrEmpty(targetKey)) return;
+
+        string dmgStr = damage.ToString("F1", CultureInfo.InvariantCulture);
+        string message = $"SHOT:{clientKey}:{targetKey}:{dmgStr}";
+        SendRawMessage(message);
+    }
+
+    // Nuevo: obtener la key asociada a un GameObject (devuelve null si no estï¿½ registrado)
+    public string GetKeyForGameObject(GameObject go)
+    {
+        if (go == null) return null;
+        lock (cubesLock)
+        {
+            foreach (var kv in playerCubes)
+            {
+                if (kv.Value == go)
+                    return kv.Key;
+            }
+        }
+        return null;
     }
 
     private void SendRawMessage(string message)
@@ -458,7 +493,7 @@ public class UDPClient : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.LogError("[Client] Error ejecutando acción: " + e.Message);
+                Debug.LogError("[Client] Error ejecutando acciï¿½n: " + e.Message);
             }
         }
     }
