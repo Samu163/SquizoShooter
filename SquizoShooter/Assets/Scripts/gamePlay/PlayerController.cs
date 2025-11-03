@@ -1,4 +1,3 @@
-using TMPro;
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -24,7 +23,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float smoothing = 10f;
 
     [Header("Visual Settings")]
-    [SerializeField] private GameObject visualModel; // Asigna el modelo visual del jugador aquí
+    [SerializeField] private GameObject visualModel;
 
     // Network/Multiplayer
     private UDPClient udpClient;
@@ -49,18 +48,12 @@ public class PlayerController : MonoBehaviour
     private const float rotationThreshold = 0.5f;
     private const float healthThreshold = 0.01f;
 
-    private Vector3 targetPosition;
-    private Quaternion targetRotation;
-    private float interpolationSpeed = 10f;
+    
 
     public bool IsLocalPlayer => isLocalPlayer;
     public bool IsDead => isDead;
 
-    void Awake()
-    {
-        targetPosition = transform.position;
-        targetRotation = transform.rotation;
-    }
+  
     void Start()
     {
         controller = GetComponent<CharacterController>();
@@ -85,7 +78,6 @@ public class PlayerController : MonoBehaviour
             cameraTransform = playerCamera.transform;
         }
 
-        // Si no se asignó visualModel manualmente, intentar encontrarlo
         if (visualModel == null)
         {
             // Buscar un hijo llamado "Model" o similar, o usar el primer hijo
@@ -98,7 +90,6 @@ public class PlayerController : MonoBehaviour
                 }
             }
 
-            // Si aún no se encuentra, usar el primer hijo que tenga renderer
             if (visualModel == null && transform.childCount > 0)
             {
                 foreach (Transform child in transform)
@@ -132,13 +123,7 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        if (!isLocalPlayer)
-        {
-            transform.position = Vector3.Lerp(transform.position, targetPosition, Time.deltaTime * interpolationSpeed);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * interpolationSpeed);
-            return;
-        }
-
+        if (!isLocalPlayer) return;
 
         if (isDead) return;
 
@@ -272,7 +257,7 @@ public class PlayerController : MonoBehaviour
         health = maxHealth;
         isDead = false;
 
-        // Obtener nueva posición de spawn
+        // Obtener nueva posicion de spawn
         Vector3 spawnPos = Vector3.zero;
 
         if (GameplayManager.Instance != null)
@@ -296,7 +281,6 @@ public class PlayerController : MonoBehaviour
             controller.enabled = false;
         }
 
-        // Mover a nueva posición mientras está deshabilitado
         transform.position = spawnPos;
 
         Debug.Log($"[PlayerController] Position set to: {transform.position}");
@@ -304,7 +288,6 @@ public class PlayerController : MonoBehaviour
         // Resetear velocidad vertical
         verticalVelocity = Vector3.zero;
 
-        // RE-HABILITAR el controller DESPUÉS de mover
         if (controller != null)
         {
             controller.enabled = true;
@@ -322,11 +305,10 @@ public class PlayerController : MonoBehaviour
             HealthBarUI.instance.UpdateUI(health, maxHealth);
         }
 
-        // Enviar nueva posición y vida al servidor
+        
         if (udpClient != null && udpClient.IsConnected)
         {
-            // Forzar el envío de la nueva posición
-            lastSentPosition = Vector3.zero; // Reset para forzar envío
+            lastSentPosition = Vector3.zero; 
             udpClient.SendCubeMovement(spawnPos);
             udpClient.SendPlayerHealth(health);
         }
@@ -408,7 +390,7 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                Debug.LogError("¡No se encontró la HealthBarUI!");
+                Debug.LogError("No se encontro la HealthBarUI!");
             }
         }
 
@@ -425,7 +407,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!isLocalPlayer)
         {
-            targetPosition = position;
+            transform.position = position;
         }
     }
 
@@ -433,7 +415,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!isLocalPlayer)
         {
-            targetRotation = Quaternion.Euler(rotation);
+            transform.rotation = Quaternion.Euler(rotation);
         }
     }
 
