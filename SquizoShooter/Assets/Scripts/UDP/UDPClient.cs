@@ -28,6 +28,8 @@ public class UDPClient : MonoBehaviour
     private readonly object cubesLock = new object();
     private Dictionary<string, GameObject> playerCubes = new Dictionary<string, GameObject>();
     public List <LookAtPlayer> AllItems = new List<LookAtPlayer>();
+    private Dictionary<int, HealStation> healStations = new Dictionary<int, HealStation>();
+    private readonly object healStationsLock = new object();
 
     private Queue<Action> mainThreadActions = new Queue<Action>();
     private readonly object mainThreadLock = new object();
@@ -148,7 +150,7 @@ public class UDPClient : MonoBehaviour
             string key = payload.Substring(0, sep);
             string valueStr = payload.Substring(sep + 1);
 
-            if (key == clientKey) return; // ignorar datos propios
+            //if (key == clientKey) return; // ignorar datos propios
 
             if (float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out float health))
             {
@@ -273,6 +275,35 @@ public class UDPClient : MonoBehaviour
                 }
             });
         }
+        if (message.StartsWith("HEAL_STATION_DATA:"))
+        {
+            // El formato es HEAL_STATION_DATA:[ID]:[ESTADO] (0 o 1)
+            string[] parts = message.Split(':');
+
+            if (parts.Length == 3 &&
+                int.TryParse(parts[1], out int stationID) &&
+                int.TryParse(parts[2], out int stateCode))
+            {
+                // Convertimos el 0/1 a booleano
+                bool isCooldown = (stateCode == 1);
+
+                // --- ¡AÑADE ESTE LOG! ---
+                Debug.LogWarning($"[Client] Recibido HEAL_STATION_DATA. ID: {stationID}, Cooldown: {isCooldown}");
+                // -------------------------
+
+                SafeEnqueueMain(() =>
+                {
+                    lock (healStationsLock)
+                    {
+                        if (healStations.TryGetValue(stationID, out HealStation station))
+                        {
+                            // Llamamos a la nueva función unificada
+                            station.SetNetworkState(isCooldown);
+                        }
+                    }
+                });
+            }
+        }
 
         if (message.StartsWith("GOODBYE:"))
         {
@@ -315,7 +346,35 @@ public class UDPClient : MonoBehaviour
             }
         }
     }
+    public void RegisterHealStation(int id, HealStation station)
+    {
+        if (id == -1)
+        {
+            Debug.LogError("Una HealStation tiene un ID de -1. ¡Asigna un ID único en el Inspector!", station);
+            return;
+        }
 
+        lock (healStationsLock)
+        {
+            if (healStations.ContainsKey(id))
+            {
+                Debug.LogWarning($"Ya existe una HealStation registrada con ID {id}. Sobrescribiendo.");
+            }
+            healStations[id] = station;
+            Debug.Log($"[Client] HealStation {id} registrada.");
+        }
+    }
+
+    // --- 3. Añade esta nueva función PÚBLICA para ENVIAR ---
+    // La HealStation llamará a esto en OnTriggerEnter()
+    public void SendHealRequest(int stationID)
+    {
+        if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
+
+        // El servidor recibirá "HEAL_REQUEST:ID_JUGADOR:ID_ESTACION"
+        string message = $"HEAL_REQUEST:{clientKey}:{stationID}";
+        SendRawMessage(message);
+    }
     public void SendCubeMovement(Vector3 position)
     {
         if (!isConnected || clientSocket == null) return;

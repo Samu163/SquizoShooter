@@ -20,6 +20,12 @@ public class UDPServer : MonoBehaviour
     private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, float> playerHealth = new Dictionary<string, float>();
+
+    // --- NUEVOS CAMPOS PARA HEALTH STATIONS ---
+    private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>(); // true = en cooldown
+    private const float HEAL_STATION_COOLDOWN_TIME = 5.0f; // Debe coincidir con el cliente
+                                                           // ---------------------------------------------
+
     private readonly object clientsLock = new object();
 
     public void StartServer()
@@ -90,12 +96,18 @@ public class UDPServer : MonoBehaviour
             {
                 connectedClients[newKey] = remote;
                 playerPositions[newKey] = Vector3.zero;
+                playerHealth[newKey] = 100f; // Asignar vida inicial
             }
 
             SendMessageToClient($"WELCOME:{newKey}", remote);
 
             // Enviar posiciones de todos los jugadores existentes al nuevo cliente
             SendAllPlayerPositionsToSingleClient(newKey, remote);
+
+            // --- NUEVO ---
+            // Enviar estado de todas las heal stations al nuevo cliente
+            SendAllHealStationStatesToSingleClient(remote);
+            // -----------
 
             // Notificar a todos sobre el nuevo jugador
             BroadcastMove(newKey, Vector3.zero);
@@ -213,6 +225,78 @@ public class UDPServer : MonoBehaviour
                 Debug.LogWarning($"[Server] Error parseando coordenadas: {coords}");
             }
         }
+
+        // --- INICIO DEL NUEVO BLOQUE HEAL_REQUEST ---
+        else if (message.StartsWith("HEAL_REQUEST:"))
+        {
+            // Formato: HEAL_REQUEST:ID_JUGADOR:ID_ESTACION
+            string[] parts = message.Split(':');
+            if (parts.Length != 3)
+            {
+                Debug.LogWarning($"[Server] HEAL_REQUEST mal formateado: {message}");
+                return;
+            }
+
+            string senderKey = parts[1];
+            if (!int.TryParse(parts[2], out int stationID))
+            {
+                Debug.LogWarning($"[Server] HEAL_REQUEST ID de estación inválido: {parts[2]}");
+                return;
+            }
+
+            bool wasApproved = false;
+            float newHealth = 0f;
+
+            lock (clientsLock)
+            {
+                // 1. Verificar si la estación ya está en cooldown
+                if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
+                {
+                    // Ya está en cooldown, no hacer nada.
+                    Debug.Log($"[Server] Petición de cura para {stationID} denegada (ya en cooldown).");
+                    wasApproved = false;
+                }
+                else
+                {
+                    // 2. No está en cooldown. ¡Aprobar la cura!
+                    Debug.Log($"[Server] Petición de cura para {stationID} APROBADA. Iniciando cooldown.");
+                    wasApproved = true;
+
+                    // 3. Poner la estación en cooldown
+                    healStationStates[stationID] = true;
+
+                    // 4. Curar al jugador (asumimos que cura al máximo, 100f)
+                    if (playerHealth.ContainsKey(senderKey))
+                    {
+                        playerHealth[senderKey] = 100f;
+                        newHealth = 100f;
+                    }
+                }
+            }
+
+            // 5. Si fue aprobada, notificar a todos
+            if (wasApproved)
+            {
+                // a. Notificar a todos la nueva vida del jugador
+                if (newHealth > 0)
+                {
+                    BroadcastPlayerHealth(senderKey, newHealth);
+                }
+
+                // b. Notificar a todos que la estación está en cooldown (estado 1)
+                BroadcastHealStationState(stationID, 1);
+
+                // c. Iniciar un timer para quitar el cooldown
+                Timer cooldownTimer = new Timer(
+                    (state) => EndHealStationCooldown(stationID), // Llama a la función cuando se cumple
+                    null, // Sin estado extra
+                    (int)(HEAL_STATION_COOLDOWN_TIME * 1000), // Tiempo en milisegundos
+                    Timeout.Infinite // No se repite
+                );
+            }
+        }
+        // --- FIN DEL NUEVO BLOQUE HEAL_REQUEST ---
+
         else if (message.StartsWith("GOODBYE:"))
         {
             string key = message.Substring("GOODBYE:".Length);
@@ -223,6 +307,21 @@ public class UDPServer : MonoBehaviour
             Debug.LogWarning("[Server] Mensaje desconocido: " + message);
         }
     }
+
+    // --- NUEVA FUNCIÓN (Callback del Timer) ---
+    void EndHealStationCooldown(int stationID)
+    {
+        Debug.Log($"[Server] Cooldown de HealStation {stationID} terminado.");
+
+        lock (clientsLock)
+        {
+            healStationStates[stationID] = false; // Marcar como disponible
+        }
+
+        // Broadcast el nuevo estado (disponible = 0)
+        BroadcastHealStationState(stationID, 0);
+    }
+    // ----------------------------------------
 
     void SendAllPlayerPositionsToSingleClient(string newKey, EndPoint remote)
     {
@@ -240,7 +339,7 @@ public class UDPServer : MonoBehaviour
 
                 // Usar InvariantCulture para formatear con punto decimal
                 string posStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
-                                             pos.x, pos.y, pos.z);
+                                              pos.x, pos.y, pos.z);
                 string msg = $"MOVE:{key}:{posStr}";
                 SendMessageToClient(msg, remote);
 
@@ -251,6 +350,30 @@ public class UDPServer : MonoBehaviour
 
         Debug.Log($"[Server] Enviadas {playerPositions.Count - 1} posiciones al cliente {newKey}");
     }
+
+    // --- NUEVA FUNCIÓN ---
+    void SendAllHealStationStatesToSingleClient(EndPoint remote)
+    {
+        lock (clientsLock)
+        {
+            if (healStationStates.Count == 0) return;
+
+            Debug.Log($"[Server] Enviando {healStationStates.Count} estados de HealStation al nuevo cliente...");
+
+            foreach (var kvp in healStationStates)
+            {
+                int stationID = kvp.Key;
+                bool isCooldown = kvp.Value;
+                int stateCode = isCooldown ? 1 : 0; // 1 = cooldown, 0 = disponible
+
+                string msg = $"HEAL_STATION_DATA:{stationID}:{stateCode}";
+                SendMessageToClient(msg, remote);
+
+                Thread.Sleep(5); // Pequeño delay
+            }
+        }
+    }
+    // ----------------------
 
     void BroadcastMove(string senderKey, Vector3 pos)
     {
@@ -283,7 +406,7 @@ public class UDPServer : MonoBehaviour
     void BroadcastRotate(string senderKey, Vector3 rot)
     {
         string rotStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
-                                     rot.x, rot.y, rot.z);
+                                      rot.x, rot.y, rot.z);
         string msg = $"ROTATE:{senderKey}:{rotStr}";
         byte[] data = Encoding.UTF8.GetBytes(msg);
 
@@ -324,6 +447,30 @@ public class UDPServer : MonoBehaviour
             catch (Exception e) { Debug.LogWarning("[Server] Error enviando PLAYERDATA: " + e.Message); }
         }
     }
+
+    // --- NUEVA FUNCIÓN ---
+    void BroadcastHealStationState(int stationID, int stateCode)
+    {
+        // stateCode: 1 = en cooldown, 0 = disponible
+        string msg = $"HEAL_STATION_DATA:{stationID}:{stateCode}";
+        byte[] data = Encoding.UTF8.GetBytes(msg);
+
+        List<EndPoint> snapshot;
+        lock (clientsLock)
+        {
+            snapshot = new List<EndPoint>(connectedClients.Values);
+        }
+
+        Debug.Log($"[Server] Transmitiendo estado de HealStation {stationID} a {snapshot.Count} clientes. Estado: {stateCode}");
+
+        foreach (var ep in snapshot)
+        {
+            try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
+            catch (Exception e) { Debug.LogWarning("[Server] Error enviando HEAL_STATION_DATA: " + e.Message); }
+        }
+    }
+    // ----------------------
+
     void SendMessageToClient(string message, EndPoint remote)
     {
         try
@@ -348,6 +495,14 @@ public class UDPServer : MonoBehaviour
             if (playerPositions.ContainsKey(key))
             {
                 playerPositions.Remove(key);
+            }
+            if (playerHealth.ContainsKey(key))
+            {
+                playerHealth.Remove(key);
+            }
+            if (playerRotations.ContainsKey(key))
+            {
+                playerRotations.Remove(key);
             }
         }
 

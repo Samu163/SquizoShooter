@@ -4,33 +4,42 @@ using System.Collections;
 
 public class HealStation : MonoBehaviour
 {
+    [Header("Configuración de Red")]
+    public int healStationID = -1;
+
     [Header("Configuración")]
     public float velocidadRotacion = 60f;
-    public float tiempoCooldown = 5.0f;
+    public float tiempoCooldown = 5.0f; // Sincroniza esto con el servidor
 
-    [Header("Referencias (Arrastrar)")]
-    public GameObject modeloVisual; // El objeto 3D que rota
-    public GameObject canvasCooldown; // El Canvas hijo
-    public Image imagenCooldownRadial; // La imagen radial
+    [Header("Referencias")]
+    public GameObject modeloVisual;
+    public GameObject canvasCooldown;
+    public Image imagenCooldownRadial;
 
-    private bool enCooldown = false;
-    private Collider miCollider; // Referencia al collider de esta estación
+    private UDPClient udpClient;
+    private Collider miCollider;
+    private bool enCooldownLocal = false;
 
     void Start()
     {
-        // Guardamos la referencia al collider para poder apagarlo y encenderlo
         miCollider = GetComponent<Collider>();
+        udpClient = FindObjectOfType<UDPClient>();
 
-        // Estado inicial
-        if (canvasCooldown != null) canvasCooldown.SetActive(false);
-        if (modeloVisual != null) modeloVisual.SetActive(true);
-        miCollider.enabled = true;
-        enCooldown = false;
+        if (udpClient != null)
+        {
+            udpClient.RegisterHealStation(healStationID, this);
+        }
+        else
+        {
+            Debug.LogError("¡No se encontró UDPClient en la escena!", this);
+        }
+
+        // Estado inicial por defecto (el servidor lo corregirá si es necesario)
+        SetNetworkState(false); // Falso = disponible
     }
 
     void Update()
     {
-        // Solo rotamos si el modelo está activo
         if (modeloVisual != null && modeloVisual.activeSelf)
         {
             modeloVisual.transform.Rotate(Vector3.up * velocidadRotacion * Time.deltaTime, Space.Self);
@@ -39,59 +48,62 @@ public class HealStation : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // Salir si ya estamos en cooldown o no es el jugador
-        if (enCooldown || !other.CompareTag("Player"))
+        // No enviamos peticiones si ya estamos en cooldown
+        if (enCooldownLocal || !other.CompareTag("Player"))
         {
             return;
         }
 
         PlayerController player = other.GetComponent<PlayerController>();
 
-        // Si el jugador es válido y necesita curación
-        if (player != null && player.health < player.maxHealth)
+        // Si es el JUGADOR LOCAL, enviar petición
+        if (player != null && player.IsLocalPlayer)
         {
-            // 1. Curar al jugador
-            player.health = player.maxHealth;
-            Debug.Log("¡Jugador curado!");
-
-            // 2. Actualizar la UI del jugador
-            if (HealthBarUI.instance != null)
-            {
-                HealthBarUI.instance.UpdateUI(player.health, player.maxHealth);
-            }
-
-            // 3. Iniciar el cooldown
-            StartCoroutine(IniciarCooldown());
+            enCooldownLocal = true; // Prevenimos spam de peticiones
+            udpClient.SendHealRequest(healStationID);
         }
     }
 
-    private IEnumerator IniciarCooldown()
-    {
-        // --- APAGADO ---
-        enCooldown = true;
-        miCollider.enabled = false; // <<< Desactivamos el collider (para no triggerear)
-        if (modeloVisual != null) modeloVisual.SetActive(false); // <<< Desactivamos el modelo
-        if (canvasCooldown != null) canvasCooldown.SetActive(true); // <<< Activamos el canvas
+    // --- FUNCIÓN ÚNICA LLAMADA POR EL SERVIDOR ---
 
-        // --- PROCESO DE COOLDOWN ---
+    // El servidor nos dice en qué estado ponernos
+    public void SetNetworkState(bool isCooldown)
+    {
+        enCooldownLocal = isCooldown;
+        miCollider.enabled = !isCooldown; // Collider activo si NO está en cooldown
+
+        if (modeloVisual != null) modeloVisual.SetActive(!isCooldown);
+        if (canvasCooldown != null) canvasCooldown.SetActive(isCooldown);
+
+        if (isCooldown)
+        {
+            // Si entramos en cooldown, iniciar la corrutina visual
+            StopAllCoroutines(); // Detener cualquier corrutina anterior
+            StartCoroutine(CooldownVisual());
+        }
+        else
+        {
+            // Si volvemos a estar disponibles, detener corrutinas
+            StopAllCoroutines();
+        }
+    }
+
+    // Corrutina puramente VISUAL para el radial
+    private IEnumerator CooldownVisual()
+    {
         float tiempoPasado = 0f;
         if (imagenCooldownRadial != null) imagenCooldownRadial.fillAmount = 0;
 
         while (tiempoPasado < tiempoCooldown)
         {
             tiempoPasado += Time.deltaTime;
-
             if (imagenCooldownRadial != null)
             {
                 imagenCooldownRadial.fillAmount = tiempoPasado / tiempoCooldown;
             }
-            yield return null; // Espera al siguiente frame
+            yield return null;
         }
 
-        // --- ENCENDIDO ---
-        if (canvasCooldown != null) canvasCooldown.SetActive(false); // <<< Ocultamos el canvas
-        if (modeloVisual != null) modeloVisual.SetActive(true); // <<< Reactivamos el modelo
-        miCollider.enabled = true; // <<< Reactivamos el collider
-        enCooldown = false;
+        if (imagenCooldownRadial != null) imagenCooldownRadial.fillAmount = 1;
     }
 }
