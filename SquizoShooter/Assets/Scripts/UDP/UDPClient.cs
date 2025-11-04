@@ -1,13 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using UnityEngine;
-
-
 
 public class UDPClient : MonoBehaviour
 {
@@ -29,7 +26,7 @@ public class UDPClient : MonoBehaviour
     private string clientKey = null;
     private readonly object cubesLock = new object();
     private Dictionary<string, GameObject> playerCubes = new Dictionary<string, GameObject>();
-    public List <LookAtPlayer> AllItems = new List<LookAtPlayer>();
+    public List<LookAtPlayer> AllItems = new List<LookAtPlayer>();
     private Dictionary<int, HealStation> healStations = new Dictionary<int, HealStation>();
     private readonly object healStationsLock = new object();
 
@@ -37,9 +34,23 @@ public class UDPClient : MonoBehaviour
     private readonly object mainThreadLock = new object();
 
     public bool IsConnected => isConnected;
-
-    // Nueva propiedad pública para exponer la key local (lectura)
     public string ClientKey => clientKey;
+
+    // Message type codes (must match server)
+    private enum MessageType : byte
+    {
+        Handshake = 1,
+        Welcome = 2,
+        PlayerData = 3,
+        ShootAnim = 4,
+        Shot = 5,
+        Move = 6,
+        Rotate = 7,
+        HealRequest = 8,
+        HealStationData = 9,
+        KillConfirmed = 10,
+        Goodbye = 11
+    }
 
     public void StartConnection()
     {
@@ -57,7 +68,7 @@ public class UDPClient : MonoBehaviour
             IPEndPoint localEP = new IPEndPoint(IPAddress.Any, clientPort);
             clientSocket.Bind(localEP);
 
-            SendRawMessage("HANDSHAKE");
+            SendHandshake();
 
             isConnected = true;
             Debug.Log($"UDP client started and bound to {clientSocket.LocalEndPoint}");
@@ -86,9 +97,9 @@ public class UDPClient : MonoBehaviour
                     int bytes = clientSocket.ReceiveFrom(buffer, ref remoteEP);
                     if (bytes > 0)
                     {
-                        string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
-                        Debug.Log($"[Client] Recibido: {msg}");
-                        SafeEnqueueMain(() => ProcessServerMessage(msg));
+                        byte[] data = new byte[bytes];
+                        Array.Copy(buffer, data, bytes);
+                        SafeEnqueueMain(() => ProcessServerMessage(data));
                     }
                 }
                 catch (SocketException se)
@@ -110,257 +121,259 @@ public class UDPClient : MonoBehaviour
         }
     }
 
-    void ProcessServerMessage(string message)
+    void ProcessServerMessage(byte[] data)
     {
-        if (message.StartsWith("WELCOME:"))
+        if (data == null || data.Length == 0) return;
+
+        try
         {
-            clientKey = message.Substring(8);
-            Debug.Log("Received client key: " + clientKey);
+            using (MemoryStream ms = new MemoryStream(data))
+            using (BinaryReader reader = new BinaryReader(ms))
+            {
+                MessageType msgType = (MessageType)reader.ReadByte();
 
-            Vector3 spawnPos = (GameplayManager.Instance != null)
-                    ? GameplayManager.Instance.GetRandomSpawnPosition()
-                    : Vector3.zero;
+                switch (msgType)
+                {
+                    case MessageType.Welcome:
+                        HandleWelcome(reader);
+                        break;
 
-            GameObject myCube = Instantiate(cubePrefab, spawnPos, Quaternion.identity);
+                    case MessageType.ShootAnim:
+                        HandleShootAnim(reader);
+                        break;
 
+                    case MessageType.PlayerData:
+                        HandlePlayerData(reader);
+                        break;
+
+                    case MessageType.Move:
+                        HandleMove(reader);
+                        break;
+
+                    case MessageType.Rotate:
+                        HandleRotate(reader);
+                        break;
+
+                    case MessageType.HealStationData:
+                        HandleHealStationData(reader);
+                        break;
+
+                    case MessageType.KillConfirmed:
+                        HandleKillConfirmed(reader);
+                        break;
+
+                    case MessageType.Goodbye:
+                        HandleGoodbye(reader);
+                        break;
+
+                    default:
+                        Debug.LogWarning($"[Client] Tipo de mensaje desconocido: {msgType}");
+                        break;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[Client] Error procesando mensaje: {e.Message}");
+        }
+    }
+
+    void HandleWelcome(BinaryReader reader)
+    {
+        clientKey = reader.ReadString();
+        Debug.Log("Received client key: " + clientKey);
+
+        Vector3 spawnPos = (GameplayManager.Instance != null)
+                ? GameplayManager.Instance.GetRandomSpawnPosition()
+                : Vector3.zero;
+
+        GameObject myCube = Instantiate(cubePrefab, spawnPos, Quaternion.identity);
+
+        lock (cubesLock)
+        {
+            playerCubes[clientKey] = myCube;
+        }
+
+        PlayerController move = myCube.GetComponent<PlayerController>();
+        if (move != null)
+        {
+            move.SetAsLocalPlayer(true);
+            move.enabled = true;
+            foreach (var item in AllItems)
+            {
+                item.AssignCamera(move.playerCamera);
+            }
+        }
+
+        if (uiController != null)
+            uiController.ShowNotification("You joined the game!", Color.green);
+
+        SendCubeMovement(spawnPos);
+    }
+
+    void HandleShootAnim(BinaryReader reader)
+    {
+        string shooterKey = reader.ReadString();
+        if (shooterKey == clientKey) return;
+
+        SafeEnqueueMain(() =>
+        {
             lock (cubesLock)
             {
-                playerCubes[clientKey] = myCube;
-            }
-
-            PlayerController move = myCube.GetComponent<PlayerController>();
-            if (move != null)
-            {
-                move.SetAsLocalPlayer(true);
-                move.enabled = true;
-                foreach (var item in AllItems)
+                if (playerCubes.TryGetValue(shooterKey, out GameObject cube) && cube != null)
                 {
-                    item.AssignCamera(move.playerCamera);
-                }
-            }
-
-            if (uiController != null)
-                uiController.ShowNotification("You joined the game!", Color.green);
-
-            SendCubeMovement(spawnPos);
-            return;
-        }
-
-        if (message.StartsWith("SHOOT_ANIM:"))
-        {
-            string shooterKey = message.Substring("SHOOT_ANIM:".Length);
-            if (shooterKey == clientKey) return;
-
-            SafeEnqueueMain(() =>
-            {
-                lock (cubesLock)
-                {
-                    if (playerCubes.TryGetValue(shooterKey, out GameObject cube) && cube != null)
+                    var controller = cube.GetComponent<PlayerController>();
+                    if (controller != null)
                     {
-                        var controller = cube.GetComponent<PlayerController>();
-                        if (controller != null)
-                        {
-                            controller.PlayShootAnimation();
-                        }
+                        controller.PlayShootAnimation();
                     }
                 }
-            });
-            return;
-        }
+            }
+        });
+    }
 
-        if (message.StartsWith("PLAYERDATA:"))
+    void HandlePlayerData(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        float health = reader.ReadSingle();
+
+        SafeEnqueueMain(() =>
         {
-            string payload = message.Substring("PLAYERDATA:".Length);
-            int sep = payload.IndexOf(':');
-            if (sep < 0) return;
-
-            string key = payload.Substring(0, sep);
-            string valueStr = payload.Substring(sep + 1);
-
-            if (float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out float health))
+            lock (cubesLock)
             {
-                SafeEnqueueMain(() =>
+                if (playerCubes.TryGetValue(key, out GameObject cube))
                 {
-                    lock (cubesLock)
+                    var controller = cube.GetComponent<PlayerController>();
+                    if (controller != null)
                     {
-                        if (playerCubes.TryGetValue(key, out GameObject cube))
+                        controller.UpdateHealth(health);
+                        Debug.Log($"[Client] Actualizada salud de {key} a {health}");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[Client] PLAYERDATA recibido para key desconocida: {key}");
+                }
+            }
+        });
+    }
+
+    void HandleMove(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        float x = reader.ReadSingle();
+        float y = reader.ReadSingle();
+        float z = reader.ReadSingle();
+
+        Vector3 newPos = new Vector3(x, y, z);
+
+        if (key == clientKey)
+            return;
+
+        SafeEnqueueMain(() =>
+        {
+            lock (cubesLock)
+            {
+                if (!playerCubes.ContainsKey(key))
+                {
+                    InstantiateRemoteCube(key, newPos);
+
+                    if (uiController != null)
+                        uiController.ShowPlayerJoined();
+                }
+                else
+                {
+                    GameObject cube = playerCubes[key];
+                    if (cube != null)
+                    {
+                        PlayerController move = cube.GetComponent<PlayerController>();
+                        if (move != null)
                         {
-                            var controller = cube.GetComponent<PlayerController>();
-                            if (controller != null)
-                            {
-                                controller.UpdateHealth(health);
-                                Debug.Log($"[Client] Actualizada salud de {key} a {health}");
-                            }
+                            move.UpdatePosition(newPos);
                         }
                         else
                         {
-                            Debug.LogWarning($"[Client] PLAYERDATA recibido para key desconocida: {key}");
-                        }
-                    }
-                });
-            }
-            return;
-        }
-
-        if (message.StartsWith("MOVE:"))
-        {
-            string[] parts = message.Split(':');
-            if (parts.Length < 3)
-            {
-                Debug.LogWarning($"[Client] MOVE mal formateado: {message}");
-                return;
-            }
-
-            string key = parts[1];
-            string[] coords = parts[2].Split(';');
-            if (coords.Length < 3)
-            {
-                Debug.LogWarning($"[Client] Coordenadas incompletas: {parts[2]}");
-                return;
-            }
-
-            if (!float.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
-                !float.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
-                !float.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
-            {
-                Debug.LogWarning($"[Client] Error parseando coordenadas: {parts[2]}");
-                return;
-            }
-
-            Vector3 newPos = new Vector3(x, y, z);
-
-            if (key == clientKey)
-                return;
-
-            SafeEnqueueMain(() =>
-            {
-                lock (cubesLock)
-                {
-                    if (!playerCubes.ContainsKey(key))
-                    {
-                        InstantiateRemoteCube(key, newPos);
-
-                        if (uiController != null)
-                            uiController.ShowPlayerJoined();
-                    }
-                    else
-                    {
-                        GameObject cube = playerCubes[key];
-                        if (cube != null)
-                        {
-                            PlayerController move = cube.GetComponent<PlayerController>();
-                            if (move != null)
-                            {
-                                move.UpdatePosition(newPos);
-                            }
-                            else
-                            {
-                                cube.transform.position = newPos;
-                            }
+                            cube.transform.position = newPos;
                         }
                     }
                 }
-            });
+            }
+        });
+    }
+
+    void HandleRotate(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        float x = reader.ReadSingle();
+        float y = reader.ReadSingle();
+        float z = reader.ReadSingle();
+
+        Vector3 newRot = new Vector3(x, y, z);
+
+        if (key == clientKey)
             return;
-        }
 
-        if (message.StartsWith("ROTATE"))
+        SafeEnqueueMain(() =>
         {
-            string[] parts = message.Split(':');
-            if (parts.Length < 3)
+            lock (cubesLock)
             {
-                Debug.LogWarning($"[Client] ROTATE mal formateado: {message}");
-                return;
-            }
-            string key = parts[1];
-            string[] coords = parts[2].Split(';');
-            if (coords.Length < 3)
-            {
-                Debug.LogWarning($"[Client] Coordenadas incompletas: {parts[2]}");
-                return;
-            }
-
-            if (!float.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
-                !float.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
-                !float.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
-            {
-                Debug.LogWarning($"[Client] Error parseando coordenadas: {parts[2]}");
-                return;
-            }
-            Vector3 newRot = new Vector3(x, y, z);
-
-            if (key == clientKey)
-                return;
-
-            SafeEnqueueMain(() =>
-            {
-                lock (cubesLock)
+                if (playerCubes.TryGetValue(key, out GameObject cube))
                 {
-                    if (playerCubes.TryGetValue(key, out GameObject cube))
+                    if (cube != null)
                     {
-                        if (cube != null)
-                        {
-                            cube.transform.rotation = Quaternion.Euler(newRot);
-                        }
+                        cube.transform.rotation = Quaternion.Euler(newRot);
                     }
                 }
+            }
+        });
+    }
+
+    void HandleHealStationData(BinaryReader reader)
+    {
+        int stationID = reader.ReadInt32();
+        int stateCode = reader.ReadInt32();
+
+        bool isCooldown = (stateCode == 1);
+
+        SafeEnqueueMain(() =>
+        {
+            lock (healStationsLock)
+            {
+                if (healStations.TryGetValue(stationID, out HealStation station))
+                {
+                    station.SetNetworkState(isCooldown);
+                }
+            }
+        });
+    }
+
+    void HandleKillConfirmed(BinaryReader reader)
+    {
+        string shooterKey = reader.ReadString();
+        if (shooterKey == clientKey)
+        {
+            SafeEnqueueMain(() =>
+            {
+                if (KillCountUI.instance != null)
+                {
+                    KillCountUI.instance.AddKill();
+                }
+                else
+                {
+                    Debug.LogWarning("[Client] KillCountUI.instance es null!");
+                }
             });
-            return;
+
+            Debug.Log($"[Client] Kill confirmado para jugador local!");
         }
+    }
 
-        if (message.StartsWith("HEAL_STATION_DATA:"))
-        {
-            string[] parts = message.Split(':');
-
-            if (parts.Length == 3 &&
-                int.TryParse(parts[1], out int stationID) &&
-                int.TryParse(parts[2], out int stateCode))
-            {
-                bool isCooldown = (stateCode == 1);
-                SafeEnqueueMain(() =>
-                {
-                    lock (healStationsLock)
-                    {
-                        if (healStations.TryGetValue(stationID, out HealStation station))
-                        {
-                            station.SetNetworkState(isCooldown);
-                        }
-                    }
-                });
-            }
-            return;
-        }
-
-        if (message.StartsWith("KILL_CONFIRMED:"))
-        {
-            string shooterKey = message.Substring("KILL_CONFIRMED:".Length);
-            if (shooterKey == clientKey)
-            {
-                SafeEnqueueMain(() =>
-                {
-                    if (KillCountUI.instance != null)
-                    {
-                        KillCountUI.instance.AddKill();
-                    }
-                    else
-                    {
-                        Debug.LogWarning("[Client] KillCountUI.instance es null!");
-                    }
-                });
-
-                Debug.Log($"[Client] Kill confirmado para jugador local!");
-            }
-            return;
-        }
-
-        if (message.StartsWith("GOODBYE:"))
-        {
-            string key = message.Substring(8);
-            SafeEnqueueMain(() => RemoveCube(key));
-            if (uiController != null)
-                uiController.ShowPlayerLeft();
-            return;
-        }
+    void HandleGoodbye(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        SafeEnqueueMain(() => RemoveCube(key));
+        if (uiController != null)
+            uiController.ShowPlayerLeft();
     }
 
     void InstantiateRemoteCube(string key, Vector3 position)
@@ -395,6 +408,7 @@ public class UDPClient : MonoBehaviour
             }
         }
     }
+
     public void RegisterHealStation(int id, HealStation station)
     {
         if (id == -1)
@@ -413,13 +427,23 @@ public class UDPClient : MonoBehaviour
             Debug.Log($"[Client] HealStation {id} registrada.");
         }
     }
+
     public void SendHealRequest(int stationID)
     {
         if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
 
-        string message = $"HEAL_REQUEST:{clientKey}:{stationID}";
-        SendRawMessage(message);
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.HealRequest);
+            writer.Write(clientKey);
+            writer.Write(stationID);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
     }
+
     public void SendCubeMovement(Vector3 position)
     {
         if (!isConnected || clientSocket == null) return;
@@ -429,11 +453,18 @@ public class UDPClient : MonoBehaviour
             return;
         }
 
-        string posStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
-                                      position.x, position.y, position.z);
-        string payload = $"{clientKey}:{posStr}";
-        string message = "MOVE:" + payload;
-        SendRawMessage(message);
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.Move);
+            writer.Write(clientKey);
+            writer.Write(position.x);
+            writer.Write(position.y);
+            writer.Write(position.z);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
     }
 
     public void SendCubeRotation(Vector3 rotation)
@@ -445,11 +476,18 @@ public class UDPClient : MonoBehaviour
             return;
         }
 
-        string rotStr = string.Format(CultureInfo.InvariantCulture, "{0:F6};{1:F6};{2:F6}",
-                                      rotation.x, rotation.y, rotation.z);
-        string payload = $"{clientKey}:{rotStr}";
-        string message = "ROTATE:" + payload;
-        SendRawMessage(message);
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.Rotate);
+            writer.Write(clientKey);
+            writer.Write(rotation.x);
+            writer.Write(rotation.y);
+            writer.Write(rotation.z);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
     }
 
     public void SendPlayerHealth(float health)
@@ -457,8 +495,16 @@ public class UDPClient : MonoBehaviour
         if (!isConnected || clientSocket == null) return;
         if (string.IsNullOrEmpty(clientKey)) return;
 
-        string message = string.Format(CultureInfo.InvariantCulture, "PLAYERDATA:{0}:{1:F1}", clientKey, health);
-        SendRawMessage(message);
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.PlayerData);
+            writer.Write(clientKey);
+            writer.Write(health);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
     }
 
     public void SendShotToServer(string targetKey, float damage)
@@ -467,19 +513,33 @@ public class UDPClient : MonoBehaviour
         if (string.IsNullOrEmpty(clientKey)) return;
         if (string.IsNullOrEmpty(targetKey)) return;
 
-        string dmgStr = damage.ToString("F1", CultureInfo.InvariantCulture);
-        string message = $"SHOT:{clientKey}:{targetKey}:{dmgStr}";
-        SendRawMessage(message);
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.Shot);
+            writer.Write(clientKey);
+            writer.Write(targetKey);
+            writer.Write(damage);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
     }
 
-    // NEW: broadcast shoot animation intent
     public void SendShootAnim()
     {
         if (!isConnected || clientSocket == null) return;
         if (string.IsNullOrEmpty(clientKey)) return;
 
-        string message = $"SHOOT_ANIM:{clientKey}";
-        SendRawMessage(message);
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.ShootAnim);
+            writer.Write(clientKey);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
     }
 
     public string GetKeyForGameObject(GameObject go)
@@ -496,14 +556,24 @@ public class UDPClient : MonoBehaviour
         return null;
     }
 
-    private void SendRawMessage(string message)
+    private void SendHandshake()
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.Handshake);
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
+    }
+
+    private void SendBinary(byte[] data)
     {
         try
         {
             if (serverEndPoint == null)
                 serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
 
-            byte[] data = Encoding.UTF8.GetBytes(message);
             clientSocket.SendTo(data, data.Length, SocketFlags.None, serverEndPoint);
         }
         catch (Exception ex)
@@ -566,7 +636,15 @@ public class UDPClient : MonoBehaviour
         {
             if (!string.IsNullOrEmpty(clientKey))
             {
-                SendRawMessage("GOODBYE:" + clientKey);
+                using (MemoryStream ms = new MemoryStream())
+                using (BinaryWriter writer = new BinaryWriter(ms))
+                {
+                    writer.Write((byte)MessageType.Goodbye);
+                    writer.Write(clientKey);
+
+                    byte[] data = ms.ToArray();
+                    SendBinary(data);
+                }
             }
         }
         catch { }
