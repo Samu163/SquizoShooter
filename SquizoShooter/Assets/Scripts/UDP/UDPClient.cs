@@ -194,14 +194,14 @@ public class UDPClient : MonoBehaviour
             playerCubes[clientKey] = myCube;
         }
 
-        PlayerController move = myCube.GetComponent<PlayerController>();
-        if (move != null)
+        PlayerController player = myCube.GetComponent<PlayerController>();
+        if (player != null)
         {
-            move.SetAsLocalPlayer(true);
-            move.enabled = true;
+            player.SetAsLocalPlayer(true);
+            player.enabled = true;
             foreach (var item in AllItems)
             {
-                item.AssignCamera(move.playerCamera);
+                item.AssignCamera(player.GetPlayerCamera().playerCamera);
             }
         }
 

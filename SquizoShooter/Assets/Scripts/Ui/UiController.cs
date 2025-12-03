@@ -242,7 +242,7 @@ public class UiController : MonoBehaviour
         {
             sb.AppendLine("LOCAL PLAYER:");
             sb.AppendLine($"  Position: {cachedLocalPlayer.transform.position}");
-            sb.AppendLine($"  Health: {cachedLocalPlayer.health:F1}");
+            sb.AppendLine($"  Health: {cachedLocalPlayer.GetLifeComponent().health:F1}");
             sb.AppendLine($"  Is Dead: {cachedLocalPlayer.IsDead}");
         }
         else
