@@ -30,22 +30,23 @@ public class PlayerSync : MonoBehaviour
             }
         }
     }
-    //TODO: Pillar rotacion Eje vertical (probablemente el Z)
+
     public void SendRotationToServer()
     {
         if (udpClient != null && udpClient.IsConnected)
         {
             float yaw = playerController.transform.eulerAngles.y;
-            Vector3 currentRotation = new Vector3(0, yaw, 0);
+            float pitch = playerController.GetPlayerCamera().CameraTransform.localEulerAngles.x;
+            Vector3 currentRotation = new Vector3(pitch, yaw, 0);
 
-            if (Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.y, currentRotation.y)) > rotationThreshold)
+            if (Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.y, currentRotation.y)) > rotationThreshold ||
+                Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.x, currentRotation.x)) > rotationThreshold)
             {
                 udpClient.SendCubeRotation(currentRotation);
                 lastSentRotation = currentRotation;
             }
         }
     }
-
     public void SendPlayerDataToServer()
     {
         if (udpClient != null && udpClient.IsConnected)

@@ -71,6 +71,12 @@ public class PlayerCamera : MonoBehaviour
 
     void LateUpdate()
     {
+        if (playerInput == null) return;
+
+        PlayerController pc = playerInput.GetComponent<PlayerController>();
+
+        if (pc != null && (pc.IsDead || !pc.IsLocalPlayer)) return;
+
         HandleCamera();
     }
 
@@ -95,7 +101,6 @@ public class PlayerCamera : MonoBehaviour
             rotationX = targetRotationX;
             rotationY = targetRotationY;
         }
-
         playerTransform.rotation = Quaternion.Euler(0f, rotationY, 0f);
         cameraTransform.localRotation = Quaternion.Euler(rotationX, 0f, 0f);
     }

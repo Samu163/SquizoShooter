@@ -310,8 +310,7 @@ public class UDPClient : MonoBehaviour
 
         Vector3 newRot = new Vector3(x, y, z);
 
-        if (key == clientKey)
-            return;
+        if (key == clientKey) return;
 
         SafeEnqueueMain(() =>
         {
@@ -321,7 +320,15 @@ public class UDPClient : MonoBehaviour
                 {
                     if (cube != null)
                     {
-                        cube.transform.rotation = Quaternion.Euler(newRot);
+                        PlayerController pc = cube.GetComponent<PlayerController>();
+                        if (pc != null)
+                        {
+                            pc.UpdateRotation(newRot);
+                        }
+                        else
+                        {
+                            cube.transform.rotation = Quaternion.Euler(0, newRot.y, 0);
+                        }
                     }
                 }
             }

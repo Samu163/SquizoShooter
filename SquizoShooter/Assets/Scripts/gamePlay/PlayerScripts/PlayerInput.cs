@@ -26,7 +26,6 @@ public class PlayerInput : MonoBehaviour
     void Update()
     {
         if (playerController != null && !playerController.IsLocalPlayer) return;
-        if (playerController != null && playerController.IsDead) return;
 
         CaptureInput();
     }

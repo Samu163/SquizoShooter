@@ -6,7 +6,7 @@ public class PlayerController : MonoBehaviour
     [Header("Components")]
     private LifeComponent lifeComponent;
     private PlayerMovement playerMovement;
-    private WallJumpComponent wallRunComponent;
+    private WallJumpComponent wallJumpComponent;
     private SlideComponent slideComponent;
     private PlayerShooting playerShooting;
     private PlayerSync playerSync;
@@ -19,38 +19,34 @@ public class PlayerController : MonoBehaviour
 
     public bool IsLocalPlayer => isLocalPlayer;
     public bool IsDead => lifeComponent != null && lifeComponent.IsDead;
+
     void Awake()
     {
         controller = GetComponent<CharacterController>();
 
-        //Añadir logica paraquitar componentes si no es local player
+        // Get components
         lifeComponent = GetComponent<LifeComponent>();
-        if (lifeComponent == null) lifeComponent = gameObject.AddComponent<LifeComponent>();
-
         playerMovement = GetComponent<PlayerMovement>();
-        if (playerMovement == null) playerMovement = gameObject.AddComponent<PlayerMovement>();
-
-        wallRunComponent = GetComponent<WallJumpComponent>();
-        if (wallRunComponent == null) wallRunComponent = gameObject.AddComponent<WallJumpComponent>();
-
+        wallJumpComponent = GetComponent<WallJumpComponent>();
         slideComponent = GetComponent<SlideComponent>();
-        if (slideComponent == null) slideComponent = gameObject.AddComponent<SlideComponent>();
-
         playerShooting = GetComponent<PlayerShooting>();
-        if (playerShooting == null) playerShooting = gameObject.AddComponent<PlayerShooting>();
-
         playerSync = GetComponent<PlayerSync>();
-        if (playerSync == null) playerSync = gameObject.AddComponent<PlayerSync>();
-
         playerInput = GetComponent<PlayerInput>();
-        if (playerInput == null) playerInput = gameObject.AddComponent<PlayerInput>();
-
         playerVisuals = GetComponent<PlayerVisuals>();
-        if (playerVisuals == null) playerVisuals = gameObject.AddComponent<PlayerVisuals>();
-
         playerCamera = GetComponent<PlayerCamera>();
-        if (playerCamera == null) playerCamera = gameObject.AddComponent<PlayerCamera>();
+
+        // Validate components
+        if (lifeComponent == null) Debug.LogError("[PlayerController] LifeComponent is missing!");
+        if (playerMovement == null) Debug.LogError("[PlayerController] PlayerMovement is missing!");
+        if (wallJumpComponent == null) Debug.LogError("[PlayerController] WallRunComponent is missing!");
+        if (slideComponent == null) Debug.LogError("[PlayerController] SlideComponent is missing!");
+        if (playerShooting == null) Debug.LogError("[PlayerController] PlayerShooting is missing!");
+        if (playerSync == null) Debug.LogError("[PlayerController] PlayerSync is missing!");
+        if (playerInput == null) Debug.LogError("[PlayerController] PlayerInput is missing!");
+        if (playerVisuals == null) Debug.LogError("[PlayerController] PlayerVisuals is missing!");
+        if (playerCamera == null) Debug.LogError("[PlayerController] PlayerCamera is missing!");
     }
+
     void Start()
     {
         InitializeComponents();
@@ -66,7 +62,7 @@ public class PlayerController : MonoBehaviour
     {
         lifeComponent.Initialize(this);
         playerMovement.Initialize(controller, this);
-        wallRunComponent.Initialize(controller, this, playerMovement);
+        wallJumpComponent.Initialize(controller, this, playerMovement);
         slideComponent.Initialize(controller, this, playerMovement);
         playerShooting.Initialize(this, playerSync, playerCamera);
         playerSync.Initialize(this);
@@ -96,7 +92,7 @@ public class PlayerController : MonoBehaviour
     void HandleJumpPressed()
     {
         if (IsDead) return;
-        playerMovement.HandleJump(wallRunComponent, slideComponent);
+        playerMovement.HandleJump(wallJumpComponent, slideComponent);
     }
 
     void HandleShootPressed()
@@ -114,23 +110,22 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         if (!isLocalPlayer) return;
-        if (IsDead) return;
 
-        playerCamera.EnableCameraIfNeeded();
-        wallRunComponent.DetectWallRun();
-        playerMovement.HandleMovement(wallRunComponent, slideComponent);
-        playerSync.SendPositionToServer();
-        playerSync.SendRotationToServer();
-        playerSync.SendPlayerDataToServer();
-
-        // Test damage with K key
-        if (Input.GetKeyDown(KeyCode.K))
+        if (!IsDead)
         {
-            lifeComponent.TakeDamage(10f);
+            playerCamera.EnableCameraIfNeeded();
+            wallJumpComponent.DetectWallRun();
+            playerMovement.HandleMovement(wallJumpComponent, slideComponent);
+            playerSync.SendPositionToServer();
+            playerSync.SendRotationToServer();
+            playerSync.SendPlayerDataToServer();
+            if (Input.GetKeyDown(KeyCode.K))
+            {
+                lifeComponent.TakeDamage(10f);
+            }
+            slideComponent.UpdateTimer();
+            wallJumpComponent.UpdateTimer();
         }
-
-        slideComponent.UpdateTimer();
-        wallRunComponent.UpdateTimer();
     }
 
     public void SetAsLocalPlayer(bool isLocal)
@@ -211,7 +206,7 @@ public class PlayerController : MonoBehaviour
         transform.position = spawnPos;
 
         playerMovement.ResetVelocity();
-        wallRunComponent.ResetState();
+        wallJumpComponent.ResetState();
         slideComponent.ResetState();
 
         if (controller != null)
@@ -247,17 +242,24 @@ public class PlayerController : MonoBehaviour
     {
         if (!isLocalPlayer)
         {
-            transform.rotation = Quaternion.Euler(rotation);
+            transform.rotation = Quaternion.Euler(0, rotation.y, 0);
+
+            playerVisuals.UpdateAiming(rotation.x);
         }
     }
 
     public void UpdateHealth(float newHealth)
     {
+        
         lifeComponent.UpdateHealth(newHealth, isLocalPlayer);
-
         if (!isLocalPlayer)
         {
             playerVisuals.UpdateVisualOnHealth(newHealth);
+        }
+        if (isLocalPlayer && newHealth <= 0 && !IsDead)
+        {
+            Debug.Log("[PlayerController] Salud llegó a 0 por red. Ejecutando muerte.");
+            HandleDeath();
         }
     }
 
@@ -269,7 +271,7 @@ public class PlayerController : MonoBehaviour
     public PlayerVisuals GetVisuals() => playerVisuals;
     public PlayerInput GetInput() => playerInput;
     public PlayerCamera GetPlayerCamera() => playerCamera;
-    public WallJumpComponent GetWallJumpComponent() => wallRunComponent;
+    public WallJumpComponent GetWallJumpComponent() => wallJumpComponent;
     public SlideComponent GetSlideComponent() => slideComponent;
-
+    public PlayerShooting GetPlayerShooting() => playerShooting;
 }
