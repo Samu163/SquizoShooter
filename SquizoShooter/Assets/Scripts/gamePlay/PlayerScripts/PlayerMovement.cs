@@ -10,20 +10,26 @@ public class PlayerMovement : MonoBehaviour
 
     private CharacterController controller;
     private PlayerController playerController;
+    private PlayerInput playerInput;
     private Vector3 verticalVelocity;
     private bool isGrounded;
 
     public Vector3 VerticalVelocity => verticalVelocity;
     public bool IsGrounded => isGrounded;
+    public float Gravity => gravity;
+    public float JumpForce => jumpForce;
 
     public void Initialize(CharacterController ctrl, PlayerController pc)
     {
         controller = ctrl;
         playerController = pc;
+        playerInput = pc.GetInput();
     }
 
-    public void HandleMovement(PlayerInput input, WallJumpComponent wallRun, SlideComponent slide)
+    public void HandleMovement(WallJumpComponent wallRun, SlideComponent slide)
     {
+        if (playerInput == null) return;
+
         // If sliding, move forward with slide force
         if (slide.IsSliding)
         {
@@ -43,8 +49,8 @@ public class PlayerMovement : MonoBehaviour
             verticalVelocity.y = -2f;
         }
 
-        float moveX = input.HorizontalInput;
-        float moveZ = input.VerticalInput;
+        float moveX = playerInput.HorizontalInput;
+        float moveZ = playerInput.VerticalInput;
 
         // Wallrunning movement is handled by WallRunComponent
         if (wallRun.IsWallRunning)
@@ -54,7 +60,7 @@ public class PlayerMovement : MonoBehaviour
         }
 
         Vector3 movement = playerController.transform.right * moveX + playerController.transform.forward * moveZ;
-        float currentSpeed = input.IsSprinting ? sprintSpeed : walkSpeed;
+        float currentSpeed = playerInput.SprintHeld ? sprintSpeed : walkSpeed;
         controller.Move(movement * currentSpeed * Time.deltaTime);
 
         // Apply gravity
@@ -70,25 +76,26 @@ public class PlayerMovement : MonoBehaviour
         controller.Move(verticalVelocity * Time.deltaTime);
     }
 
-    public void HandleJump(PlayerInput input, WallJumpComponent wallRun, SlideComponent slide)
+    public void HandleJump(WallJumpComponent wallRun, SlideComponent slide)
     {
         // Wall jump handling is delegated to WallRunComponent
-        //if (wallRun.TryWallJump(input, ref verticalVelocity, jumpForce, gravity))
-        //{
-        //    return;
-        //}
-
-        // Normal jump
-        if (input.JumpPressed && isGrounded)
+        if (wallRun.TryWallJump(ref verticalVelocity))
         {
-            verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
-            wallRun.RegisterJump();
+            return;
         }
 
         // Jump during slide
-        if (slide.IsSliding && input.JumpPressed)
+        if (slide.IsSliding)
         {
             slide.EndSlide();
+            verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+            wallRun.RegisterJump();
+            return;
+        }
+
+        // Normal jump
+        if (isGrounded)
+        {
             verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
             wallRun.RegisterJump();
         }

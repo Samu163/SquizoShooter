@@ -6,7 +6,7 @@ public class PlayerController : MonoBehaviour
     [Header("Components")]
     private LifeComponent lifeComponent;
     private PlayerMovement playerMovement;
-    private WallJumpComponent wallJumpComponent;
+    private WallJumpComponent wallRunComponent;
     private SlideComponent slideComponent;
     private PlayerShooting playerShooting;
     private PlayerSync playerSync;
@@ -19,20 +19,19 @@ public class PlayerController : MonoBehaviour
 
     public bool IsLocalPlayer => isLocalPlayer;
     public bool IsDead => lifeComponent != null && lifeComponent.IsDead;
-
     void Awake()
     {
         controller = GetComponent<CharacterController>();
 
-        // Get or add components
+        //Añadir logica paraquitar componentes si no es local player
         lifeComponent = GetComponent<LifeComponent>();
         if (lifeComponent == null) lifeComponent = gameObject.AddComponent<LifeComponent>();
 
         playerMovement = GetComponent<PlayerMovement>();
         if (playerMovement == null) playerMovement = gameObject.AddComponent<PlayerMovement>();
 
-        wallJumpComponent = GetComponent<WallJumpComponent>();
-        if (wallJumpComponent == null) wallJumpComponent = gameObject.AddComponent<WallJumpComponent>();
+        wallRunComponent = GetComponent<WallJumpComponent>();
+        if (wallRunComponent == null) wallRunComponent = gameObject.AddComponent<WallJumpComponent>();
 
         slideComponent = GetComponent<SlideComponent>();
         if (slideComponent == null) slideComponent = gameObject.AddComponent<SlideComponent>();
@@ -52,40 +51,64 @@ public class PlayerController : MonoBehaviour
         playerCamera = GetComponent<PlayerCamera>();
         if (playerCamera == null) playerCamera = gameObject.AddComponent<PlayerCamera>();
     }
-
     void Start()
     {
         InitializeComponents();
+        SubscribeToInputEvents();
+    }
+
+    void OnDestroy()
+    {
+        UnsubscribeFromInputEvents();
     }
 
     void InitializeComponents()
     {
-        // Initialize Life Component
         lifeComponent.Initialize(this);
-
-        // Initialize Movement
         playerMovement.Initialize(controller, this);
-
-        // Initialize WallRun
-        wallJumpComponent.Initialize(controller, this);
-
-        // Initialize Slide
-        slideComponent.Initialize(controller, this);
-
-        // Initialize Shooting
+        wallRunComponent.Initialize(controller, this, playerMovement);
+        slideComponent.Initialize(controller, this, playerMovement);
         playerShooting.Initialize(this, playerSync, playerCamera);
-
-        // Initialize Sync
         playerSync.Initialize(this);
-
-        // Initialize Input
         playerInput.Initialize(this);
-
-        // Initialize Visuals
         playerVisuals.Initialize(transform);
+        playerCamera.Initialize(transform, playerInput);
+    }
 
-        // Initialize Camera
-        playerCamera.Initialize(transform);
+    void SubscribeToInputEvents()
+    {
+        if (playerInput == null) return;
+
+        playerInput.OnJumpPressed += HandleJumpPressed;
+        playerInput.OnShootPressed += HandleShootPressed;
+        playerInput.OnSlidePressed += HandleSlidePressed;
+    }
+
+    void UnsubscribeFromInputEvents()
+    {
+        if (playerInput == null) return;
+
+        playerInput.OnJumpPressed -= HandleJumpPressed;
+        playerInput.OnShootPressed -= HandleShootPressed;
+        playerInput.OnSlidePressed -= HandleSlidePressed;
+    }
+
+    void HandleJumpPressed()
+    {
+        if (IsDead) return;
+        playerMovement.HandleJump(wallRunComponent, slideComponent);
+    }
+
+    void HandleShootPressed()
+    {
+        if (IsDead) return;
+        playerShooting.TryShoot();
+    }
+
+    void HandleSlidePressed()
+    {
+        if (IsDead) return;
+        slideComponent.TryStartSlide();
     }
 
     void Update()
@@ -94,23 +117,8 @@ public class PlayerController : MonoBehaviour
         if (IsDead) return;
 
         playerCamera.EnableCameraIfNeeded();
-
-        // Input handling
-        playerInput.HandleInput();
-
-        // Wall detection and slide input
-        wallJumpComponent.DetectWallRun(playerInput);
-        slideComponent.HandleSlideInput(playerInput);
-
-        // Movement and physics
-        playerMovement.HandleMovement(playerInput, wallJumpComponent, slideComponent);
-        playerCamera.HandleCamera(playerInput);
-        playerMovement.HandleJump(playerInput, wallJumpComponent, slideComponent);
-
-        // Shooting
-        playerShooting.HandleShooting(playerInput, playerCamera.CameraTransform);
-
-        // Sync with server
+        wallRunComponent.DetectWallRun();
+        playerMovement.HandleMovement(wallRunComponent, slideComponent);
         playerSync.SendPositionToServer();
         playerSync.SendRotationToServer();
         playerSync.SendPlayerDataToServer();
@@ -121,9 +129,8 @@ public class PlayerController : MonoBehaviour
             lifeComponent.TakeDamage(10f);
         }
 
-        // Update timers
         slideComponent.UpdateTimer();
-        wallJumpComponent.UpdateTimer();
+        wallRunComponent.UpdateTimer();
     }
 
     public void SetAsLocalPlayer(bool isLocal)
@@ -204,7 +211,7 @@ public class PlayerController : MonoBehaviour
         transform.position = spawnPos;
 
         playerMovement.ResetVelocity();
-        wallJumpComponent.ResetState();
+        wallRunComponent.ResetState();
         slideComponent.ResetState();
 
         if (controller != null)
@@ -260,9 +267,9 @@ public class PlayerController : MonoBehaviour
     public PlayerMovement GetMovement() => playerMovement;
     public PlayerSync GetSync() => playerSync;
     public PlayerVisuals GetVisuals() => playerVisuals;
-    public SlideComponent GetSlideComponent() => slideComponent;
-    public WallJumpComponent GetWallJumpComponent() => wallJumpComponent;
-    public PlayerShooting GetShootingComponent() => playerShooting;
+    public PlayerInput GetInput() => playerInput;
     public PlayerCamera GetPlayerCamera() => playerCamera;
-    public PlayerInput GetPlayerInput() => playerInput;
+    public WallJumpComponent GetWallJumpComponent() => wallRunComponent;
+    public SlideComponent GetSlideComponent() => slideComponent;
+
 }

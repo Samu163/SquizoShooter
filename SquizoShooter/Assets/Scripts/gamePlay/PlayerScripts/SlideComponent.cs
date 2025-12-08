@@ -10,6 +10,7 @@ public class SlideComponent : MonoBehaviour
 
     private CharacterController controller;
     private PlayerController playerController;
+    private PlayerMovement playerMovement;
 
     private bool isSliding = false;
     private float slideTimer = 0f;
@@ -19,10 +20,11 @@ public class SlideComponent : MonoBehaviour
     public bool IsSliding => isSliding;
     public float SlideSpeedMultiplier => slideSpeedMultiplier;
 
-    public void Initialize(CharacterController ctrl, PlayerController pc)
+    public void Initialize(CharacterController ctrl, PlayerController pc, PlayerMovement movement)
     {
         controller = ctrl;
         playerController = pc;
+        playerMovement = movement;
 
         if (controller != null)
         {
@@ -31,16 +33,12 @@ public class SlideComponent : MonoBehaviour
         }
     }
 
-    public void HandleSlideInput(PlayerInput input)
+    public void TryStartSlide()
     {
         if (isSliding) return;
+        if (playerMovement == null) return;
 
-        if (!input.SlidePressed) return;
-
-        PlayerMovement movement = playerController.GetMovement();
-        if (movement == null) return;
-
-        float horizontalSpeed = movement.GetHorizontalSpeed();
+        float horizontalSpeed = playerMovement.GetHorizontalSpeed();
 
         if (horizontalSpeed >= slideMinSpeed)
         {

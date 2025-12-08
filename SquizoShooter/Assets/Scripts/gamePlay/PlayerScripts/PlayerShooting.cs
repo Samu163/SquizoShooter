@@ -28,23 +28,19 @@ public class PlayerShooting : MonoBehaviour
         playerCamera = cam;
     }
 
-    public void HandleShooting(PlayerInput input, Transform cameraTransform)
+    public void TryShoot()
     {
-        if (cameraTransform == null || playerSync == null) return;
+        float cooldown = 1f / Mathf.Max(0.0001f, fireRate);
+        if (Time.time - lastFireTime < cooldown) return;
+        lastFireTime = Time.time;
 
-        if (input.ShootPressed)
-        {
-            float cooldown = 1f / Mathf.Max(0.0001f, fireRate);
-            if (Time.time - lastFireTime < cooldown) return;
-            lastFireTime = Time.time;
-
-            TryShoot(cameraTransform);
-            ApplyRecoil();
-        }
+        Shoot();
+        ApplyRecoil();
     }
 
-    void TryShoot(Transform cameraTransform)
+    void Shoot()
     {
+        Transform cameraTransform = playerCamera != null ? playerCamera.CameraTransform : null;
         if (cameraTransform == null) return;
 
         // Local animation

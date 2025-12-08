@@ -17,6 +17,8 @@ public class WallJumpComponent : MonoBehaviour
 
     private CharacterController controller;
     private PlayerController playerController;
+    private PlayerMovement playerMovement;
+    private PlayerInput playerInput;
 
     // Wall states
     private bool isWallRiding = false;
@@ -35,18 +37,19 @@ public class WallJumpComponent : MonoBehaviour
     public bool IsWallRunning => isWallRunning;
     public float WallSlideFallSpeed => wallSlideFallSpeed;
 
-    public void Initialize(CharacterController ctrl, PlayerController pc)
+    public void Initialize(CharacterController ctrl, PlayerController pc, PlayerMovement movement)
     {
         controller = ctrl;
         playerController = pc;
+        playerMovement = movement;
+        playerInput = pc.GetInput();
     }
 
-    public void DetectWallRun(PlayerInput input)
+    public void DetectWallRun()
     {
-        PlayerMovement movement = playerController.GetMovement();
-        if (movement == null) return;
+        if (playerMovement == null || playerInput == null) return;
 
-        bool isGrounded = movement.IsGrounded;
+        bool isGrounded = playerMovement.IsGrounded;
 
         // Reset wallrun when grounded
         if (isGrounded)
@@ -57,7 +60,7 @@ public class WallJumpComponent : MonoBehaviour
             return;
         }
 
-        bool jumpHeld = input.JumpHeld;
+        bool jumpHeld = playerInput.JumpHeld;
 
         // Detect frontal wall for slide
         Vector3 origin = playerController.transform.position + Vector3.up * (controller != null ? controller.height * 0.5f : 0.9f);
@@ -66,7 +69,7 @@ public class WallJumpComponent : MonoBehaviour
         {
             if (frontHit.collider.CompareTag("Wall"))
             {
-                if (movement.VerticalVelocity.y < minWallAttachFallSpeed || (Time.time - lastJumpTime) <= wallAttachWindow)
+                if (playerMovement.VerticalVelocity.y < minWallAttachFallSpeed || (Time.time - lastJumpTime) <= wallAttachWindow)
                 {
                     isWallRiding = true;
                     currentWallNormal = frontHit.normal;
@@ -138,24 +141,29 @@ public class WallJumpComponent : MonoBehaviour
         controller.Move(verticalVelocity * Time.deltaTime);
     }
 
-    public bool TryWallJump(PlayerInput input, ref Vector3 verticalVelocity, float jumpForce, float gravity)
+    public bool TryWallJump(ref Vector3 verticalVelocity)
     {
+        if (playerMovement == null) return false;
+
+        float jumpForce = playerMovement.JumpForce;
+        float gravity = playerMovement.Gravity;
+
         // Wallrun jump (tap while wallrunning)
-        if (isWallRunning && input.JumpPressed)
+        if (isWallRunning)
         {
             DoWallJump(lastWallNormal, ref verticalVelocity, jumpForce, gravity);
             return true;
         }
 
         // Coyote time jump
-        if (!isWallRunning && (Time.time - lastWallRunEndTime) <= wallJumpCoyoteTime && input.JumpPressed)
+        if (!isWallRunning && (Time.time - lastWallRunEndTime) <= wallJumpCoyoteTime)
         {
             DoWallJump(lastWallNormal, ref verticalVelocity, jumpForce, gravity);
             return true;
         }
 
         // Wall slide frontal jump
-        if (isWallRiding && input.JumpPressed)
+        if (isWallRiding)
         {
             verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
             Vector3 push = currentWallNormal * wallJumpPush;

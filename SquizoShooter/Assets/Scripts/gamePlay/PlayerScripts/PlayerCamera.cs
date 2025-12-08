@@ -19,12 +19,14 @@ public class PlayerCamera : MonoBehaviour
     private float targetRotationY = 0f;
 
     private Transform playerTransform;
+    private PlayerInput playerInput;
 
     public Transform CameraTransform => cameraTransform;
 
-    public void Initialize(Transform playerTrans)
+    public void Initialize(Transform playerTrans, PlayerInput input)
     {
         playerTransform = playerTrans;
+        playerInput = input;
 
         if (playerCamera == null)
         {
@@ -67,12 +69,17 @@ public class PlayerCamera : MonoBehaviour
         }
     }
 
-    public void HandleCamera(PlayerInput input)
+    void LateUpdate()
     {
-        if (cameraTransform == null) return;
+        HandleCamera();
+    }
 
-        float mouseX = input.MouseX * mouseSensitivityX;
-        float mouseY = input.MouseY * mouseSensitivityY;
+    void HandleCamera()
+    {
+        if (cameraTransform == null || playerInput == null) return;
+
+        float mouseX = playerInput.MouseX * mouseSensitivityX;
+        float mouseY = playerInput.MouseY * mouseSensitivityY;
 
         targetRotationY += mouseX;
         targetRotationX -= mouseY;

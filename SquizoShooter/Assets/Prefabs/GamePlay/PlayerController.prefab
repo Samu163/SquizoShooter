@@ -236,6 +236,15 @@ GameObject:
   - component: {fileID: 4745372209442855779}
   - component: {fileID: 6302073825630652566}
   - component: {fileID: 4277076236291555110}
+  - component: {fileID: 5310028359342775327}
+  - component: {fileID: 3698704242986805756}
+  - component: {fileID: 8301057738028465835}
+  - component: {fileID: 6931173188037855100}
+  - component: {fileID: 4507768841498945337}
+  - component: {fileID: 6838780169586237513}
+  - component: {fileID: 8386853341909703002}
+  - component: {fileID: 5909041087245816382}
+  - component: {fileID: 329999652210186343}
   m_Layer: 0
   m_Name: PlayerController
   m_TagString: Player
@@ -376,20 +385,80 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2a041b046efe95248a53b0520d381284, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
-  maxHealth: 100
-  health: 100
-  walkSpeed: 10
-  sprintSpeed: 15
-  jumpForce: 3
-  gravity: -30
+--- !u!114 &5310028359342775327
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d71749c4126eeeb4f9490939fb659b99, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerCamera
   cameraTransform: {fileID: 4203585546040098731}
   mouseSensitivityX: 2
   mouseSensitivityY: 2
   verticalLimitMin: -90
   verticalLimitMax: 90
-  smoothMovement: 0
+  smoothMovement: 1
   smoothing: 10
-  visualModel: {fileID: 7989583440541540091}
+  playerCamera: {fileID: 4289920988945353161}
+--- !u!114 &3698704242986805756
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 49a8bba4665533b4c92946f069f35ee1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LifeComponent
+  maxHealth: 100
+  health: 100
+--- !u!114 &8301057738028465835
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cbc3d1e6f7263ad41b608aab810271e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
+  walkSpeed: 5
+  sprintSpeed: 8
+  jumpForce: 8
+  gravity: -20
+--- !u!114 &6931173188037855100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d99f1eb4a2119134abb725565232addb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerInput
+--- !u!114 &4507768841498945337
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe579d81cfa3b6e46844b495a759fd76, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerShooting
   shootRange: 100
   shootDamage: 25
   fireRate: 4
@@ -400,22 +469,71 @@ MonoBehaviour:
   gizmoLineColor: {r: 1, g: 0, b: 0, a: 1}
   gizmoHitColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   gizmoHitRadius: 0.25
-  wallCheckDistance: 0.8
-  wallSlideFallSpeed: -2
-  wallJumpPush: 6
-  wallRunMaxTime: 5
-  wallRunGravity: 0
-  wallRunMinForward: 0.2
-  wallRunSpeed: 10
-  minWallAttachFallSpeed: -0.5
-  wallReattachCooldown: 0.25
-  wallAttachWindow: 0.35
+--- !u!114 &6838780169586237513
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7617231d26501ab43a9b5f8e4dce1e1e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerSync
+--- !u!114 &8386853341909703002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d77bac385ac1c454283a7551e61e724c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerVisuals
+  visualModel: {fileID: 7989583440541540091}
+  Animator: {fileID: 9077353619581514875}
+--- !u!114 &5909041087245816382
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ecff33ee6070d94fb0da2b4e41552fa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlideComponent
   slideDuration: 0.9
   slideSpeedMultiplier: 1.6
   slideHeightMultiplier: 0.5
-  Animator: {fileID: 9077353619581514875}
-  Trail: {fileID: 5806932214502298689}
-  playerCamera: {fileID: 4289920988945353161}
+  slideMinSpeed: 7
+--- !u!114 &329999652210186343
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 45b457412e6ef574089d419de03d2770, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallJumpComponent
+  wallCheckDistance: 0.8
+  wallSlideFallSpeed: -2
+  wallJumpPush: 6
+  wallRunMaxTime: 1.5
+  wallRunGravity: -2
+  wallRunSpeed: 5
+  minWallAttachFallSpeed: -0.5
+  wallReattachCooldown: 0.25
+  wallAttachWindow: 0.35
+  wallJumpCoyoteTime: 0.2
+  wallStickDistance: 0.5
 --- !u!1 &8166014812342378928
 GameObject:
   m_ObjectHideFlags: 0

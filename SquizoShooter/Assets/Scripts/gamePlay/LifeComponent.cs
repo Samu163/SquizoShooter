@@ -68,6 +68,7 @@ public class LifeComponent : MonoBehaviour
             HealthBarUI.instance.UpdateUI(0f, maxHealth);
         }
 
+        // Notify controller to handle death logic
         if (playerController != null)
         {
             playerController.HandleDeath();
