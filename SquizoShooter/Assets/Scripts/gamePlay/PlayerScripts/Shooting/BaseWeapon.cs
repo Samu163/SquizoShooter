@@ -2,34 +2,24 @@ using UnityEngine;
 
 public abstract class BaseWeapon : MonoBehaviour
 {
-    [Header("Base Weapon Settings")]
+    [Header("Weapon Stats")]
     [SerializeField] protected float shootRange = 100f;
     [SerializeField] protected float shootDamage = 25f;
     [SerializeField] protected float fireRate = 4f;
-    [SerializeField] protected float recoilPitch = 5f;
-    [SerializeField] protected float recoilYaw = 1f;
-    [SerializeField] protected float recoilBack = 0.2f;
 
-    [Header("Weapon Model")]
+    [Header("Recoil Data")]
+    [SerializeField] public float recoilPitch = 5f;
+    [SerializeField] public float recoilYaw = 1f;
+    [SerializeField] public float recoilBack = 0.2f;
+
+    [Header("Visuals")]
     [SerializeField] protected GameObject weaponModel;
 
-    protected PlayerController playerController;
-    protected PlayerSync playerSync;
-    protected PlayerCamera playerCamera;
-    protected PlayerMovement playerMovement;
-    protected PlayerVisuals playerVisuals;
     protected float lastFireTime = 0f;
-
     public int WeaponID { get; protected set; }
-    public GameObject WeaponModel => weaponModel;
 
-    public virtual void Initialize(PlayerController pc, PlayerSync sync, PlayerCamera cam)
-    {
-        playerController = pc;
-        playerSync = sync;
-        playerCamera = cam;
-        playerMovement = pc.GetMovement();
-        playerVisuals = pc.GetVisuals();
+    public virtual void Initialize()
+    {     
     }
 
     public virtual bool CanShoot()
@@ -38,94 +28,24 @@ public abstract class BaseWeapon : MonoBehaviour
         return Time.time - lastFireTime >= cooldown;
     }
 
-    public virtual void TryShoot()
+    public virtual void PerformShoot(Transform shootOrigin, UDPClient udpClient, string myKey)
     {
-        if (!CanShoot()) return;
-
         lastFireTime = Time.time;
-        Shoot();
-        ApplyRecoil();
+        OnShootLogic(shootOrigin, udpClient, myKey);
     }
 
-    protected abstract void Shoot();
+    protected abstract void OnShootLogic(Transform origin, UDPClient client, string myKey);
 
-    protected virtual void ApplyRecoil()
+    public void SetActive(bool active)
     {
-        if (playerCamera != null)
-        {
-            playerCamera.ApplyRecoil(recoilPitch, recoilYaw);
-        }
-
-        if (playerMovement != null)
-        {
-            playerMovement.ApplyPhysicalRecoil(recoilBack);
-        }
+        if (weaponModel != null) weaponModel.SetActive(active);
     }
 
-    protected virtual void PlayShootAnimation()
+    protected void SendDamage(UDPClient client, string targetKey, float damage)
     {
-        if (playerVisuals != null)
+        if (client != null && client.IsConnected)
         {
-            playerVisuals.PlayShootAnimation();
-        }
-
-        UDPClient udpClient = playerSync?.GetUDPClient();
-        if (udpClient != null && udpClient.IsConnected)
-        {
-            udpClient.SendShootAnim();
+            client.SendShotToServer(targetKey, damage);
         }
     }
-
-    protected virtual void SendDamageToServer(string targetKey, float damage)
-    {
-        UDPClient udpClient = playerSync?.GetUDPClient();
-        if (udpClient != null && udpClient.IsConnected)
-        {
-            udpClient.SendShotToServer(targetKey, damage);
-        }
-    }
-
-    protected string GetTargetKeyFromHit(RaycastHit hit)
-    {
-        Transform t = hit.collider.transform;
-        while (t != null && !t.CompareTag("Player"))
-        {
-            t = t.parent;
-        }
-
-        if (t != null)
-        {
-            GameObject hitPlayerGO = t.gameObject;
-            UDPClient udpClient = playerSync?.GetUDPClient();
-
-            if (udpClient == null)
-            {
-                Debug.LogWarning("[BaseWeapon] No UDPClient to send SHOT.");
-                return null;
-            }
-
-            string targetKey = udpClient.GetKeyForGameObject(hitPlayerGO);
-
-            // Avoid self-damage
-            if (udpClient.ClientKey == targetKey)
-            {
-                Debug.Log("[BaseWeapon] Shot ignored: self-hit.");
-                return null;
-            }
-
-            return targetKey;
-        }
-
-        return null;
-    }
-
-    public virtual void SetActive(bool active)
-    {
-        if (weaponModel != null)
-        {
-            weaponModel.SetActive(active);
-        }
-    }
-
-    public float GetShootRange() => shootRange;
 }

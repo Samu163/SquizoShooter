@@ -50,4 +50,3 @@ public class MiniGunWeapon : BaseWeapon
         }
     }
 }
-}
