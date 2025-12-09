@@ -78,6 +78,9 @@ public class PlayerController : MonoBehaviour
         playerInput.OnJumpPressed += HandleJumpPressed;
         playerInput.OnShootPressed += HandleShootPressed;
         playerInput.OnSlidePressed += HandleSlidePressed;
+
+        // NEW: subscribe to held shooting for automatic fire
+        playerInput.OnShootHeld += HandleShootHeld;
     }
 
     void UnsubscribeFromInputEvents()
@@ -87,6 +90,9 @@ public class PlayerController : MonoBehaviour
         playerInput.OnJumpPressed -= HandleJumpPressed;
         playerInput.OnShootPressed -= HandleShootPressed;
         playerInput.OnSlidePressed -= HandleSlidePressed;
+
+        // NEW: unsubscribe
+        playerInput.OnShootHeld -= HandleShootHeld;
     }
 
     void HandleJumpPressed()
@@ -98,7 +104,21 @@ public class PlayerController : MonoBehaviour
     void HandleShootPressed()
     {
         if (IsDead) return;
-        playerShooting.TryShoot();
+        var shooter = GetPlayerShooting();
+        if (shooter != null)
+        {
+            shooter.TryShoot();
+        }
+    }
+
+    // NEW: called every frame while mouse button is held
+    void HandleShootHeld()
+    {
+        var shooter = GetPlayerShooting();
+        if (shooter != null)
+        {
+            shooter.TryShoot(); // rate-limited inside PlayerShooting
+        }
     }
 
     void HandleSlidePressed()
