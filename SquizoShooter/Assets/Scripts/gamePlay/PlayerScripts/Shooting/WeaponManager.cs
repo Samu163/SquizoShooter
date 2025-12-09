@@ -21,12 +21,11 @@ public class WeaponManager : MonoBehaviour
         playerSync = sync;
         playerCamera = cam;
 
-        // Initialize all weapons
         foreach (var weapon in availableWeapons)
         {
             if (weapon != null)
             {
-                weapon.Initialize(pc, sync, cam);
+                weapon.Initialize();
                 weapon.SetActive(false);
             }
         }

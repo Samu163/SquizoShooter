@@ -5,60 +5,44 @@ public class ShotgunWeapon : BaseWeapon
     [Header("Shotgun Specific")]
     [SerializeField] private int pelletCount = 6;
     [SerializeField] private float spreadAngle = 6f;
-    [SerializeField] private float perPelletDamage = 9f;
 
     void Awake()
     {
         WeaponID = 3;
-
-        // Shotgun stats
+        // Stats 
         fireRate = 1.2f;
         recoilPitch = 8f;
         recoilYaw = 2.2f;
         recoilBack = 0.35f;
+        shootDamage = 9f; 
     }
 
-    protected override void Shoot()
+    protected override void OnShootLogic(Transform origin, UDPClient client, string myKey)
     {
-        Transform cameraTransform = playerCamera?.CameraTransform;
-        if (cameraTransform == null) return;
-
-        PlayShootAnimation();
-
-        Vector3 origin = cameraTransform.position;
-
-        // Fire multiple pellets
         for (int i = 0; i < pelletCount; i++)
         {
-            Vector3 dir = ApplySpread(cameraTransform.forward, spreadAngle);
-            FirePellet(origin, dir);
+            Vector3 dir = ApplySpread(origin.forward, spreadAngle);
+            FirePellet(origin.position, dir, client, myKey);
         }
     }
 
-    void FirePellet(Vector3 origin, Vector3 direction)
+    void FirePellet(Vector3 pos, Vector3 dir, UDPClient client, string myKey)
     {
-        Ray ray = new Ray(origin, direction);
-        RaycastHit[] hits = Physics.RaycastAll(ray, shootRange);
-
-        if (hits == null || hits.Length == 0) return;
-
-        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-        foreach (var hit in hits)
+        Ray ray = new Ray(pos, dir);
+        if (Physics.Raycast(ray, out RaycastHit hit, shootRange))
         {
-            // Block pellet if hits a wall
-            if (hit.collider != null && hit.collider.CompareTag("Wall"))
-            {
-                Debug.Log("[ShotgunWeapon] Pellet blocked by Wall at " + hit.point);
-                return;
-            }
+            if (hit.collider.CompareTag("Wall")) return;
 
-            // Check for player hit
-            string targetKey = GetTargetKeyFromHit(hit);
-            if (!string.IsNullOrEmpty(targetKey))
+            Transform t = hit.collider.transform;
+            while (t != null && !t.CompareTag("Player")) t = t.parent;
+
+            if (t != null && client != null)
             {
-                SendDamageToServer(targetKey, perPelletDamage);
-                return; // Pellet consumed
+                string targetKey = client.GetKeyForGameObject(t.gameObject);
+                if (!string.IsNullOrEmpty(targetKey) && targetKey != myKey)
+                {
+                    SendDamage(client, targetKey, shootDamage);
+                }
             }
         }
     }
@@ -67,7 +51,6 @@ public class ShotgunWeapon : BaseWeapon
     {
         float yaw = Random.Range(-angleDeg, angleDeg);
         float pitch = Random.Range(-angleDeg, angleDeg);
-        Quaternion spreadRot = Quaternion.Euler(pitch, yaw, 0f);
-        return spreadRot * forward;
+        return Quaternion.Euler(pitch, yaw, 0f) * forward;
     }
 }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Linq; // Necesario para ordenar si usas Array.Sort o Linq
 
 public class PistolWeapon : BaseWeapon
 {
@@ -6,7 +7,7 @@ public class PistolWeapon : BaseWeapon
     {
         WeaponID = 1;
 
-        // Pistol stats
+        // Stats
         shootDamage = 25f;
         fireRate = 4f;
         recoilPitch = 3f;
@@ -14,38 +15,36 @@ public class PistolWeapon : BaseWeapon
         recoilBack = 0.15f;
     }
 
-    protected override void Shoot()
+    protected override void OnShootLogic(Transform origin, UDPClient client, string myKey)
     {
-        Transform cameraTransform = playerCamera?.CameraTransform;
-        if (cameraTransform == null) return;
+        Ray ray = new Ray(origin.position, origin.forward);
 
-        PlayShootAnimation();
-
-        Vector3 origin = cameraTransform.position;
-        Vector3 dir = cameraTransform.forward;
-
-        Ray ray = new Ray(origin, dir);
         RaycastHit[] hits = Physics.RaycastAll(ray, shootRange);
-
         if (hits == null || hits.Length == 0) return;
-
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
         foreach (var hit in hits)
         {
-            // Block shot if hits a wall
-            if (hit.collider != null && hit.collider.CompareTag("Wall"))
+            if (hit.collider.CompareTag("Wall"))
             {
-                Debug.Log("[PistolWeapon] Shot blocked by Wall at " + hit.point);
                 return;
             }
 
-            // Check for player hit
-            string targetKey = GetTargetKeyFromHit(hit);
-            if (!string.IsNullOrEmpty(targetKey))
+            Transform t = hit.collider.transform;
+            while (t != null && !t.CompareTag("Player"))
             {
-                SendDamageToServer(targetKey, shootDamage);
-                return;
+                t = t.parent;
+            }
+
+            if (t != null && client != null)
+            {
+                string targetKey = client.GetKeyForGameObject(t.gameObject);
+
+                if (!string.IsNullOrEmpty(targetKey) && targetKey != myKey)
+                {
+                    SendDamage(client, targetKey, shootDamage);
+                    return; 
+                }
             }
         }
     }

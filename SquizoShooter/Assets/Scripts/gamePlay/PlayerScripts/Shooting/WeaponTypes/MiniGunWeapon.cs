@@ -5,24 +5,19 @@ public class MiniGunWeapon : BaseWeapon
     void Awake()
     {
         WeaponID = 2;
+
+        // Stats 
         shootDamage = 20f;
-        fireRate = 10f;
+        fireRate = 10f; 
         recoilPitch = 6f;
         recoilYaw = 1.5f;
         recoilBack = 0.25f;
     }
 
-    protected override void Shoot()
+    protected override void OnShootLogic(Transform origin, UDPClient client, string myKey)
     {
-        Transform cameraTransform = playerCamera?.CameraTransform;
-        if (cameraTransform == null) return;
 
-        PlayShootAnimation();
-
-        Vector3 origin = cameraTransform.position;
-        Vector3 dir = cameraTransform.forward;
-
-        Ray ray = new Ray(origin, dir);
+        Ray ray = new Ray(origin.position, origin.forward);
         RaycastHit[] hits = Physics.RaycastAll(ray, shootRange);
 
         if (hits == null || hits.Length == 0) return;
@@ -31,20 +26,28 @@ public class MiniGunWeapon : BaseWeapon
 
         foreach (var hit in hits)
         {
-            // Block shot if hits a wall
-            if (hit.collider != null && hit.collider.CompareTag("Wall"))
+            if (hit.collider.CompareTag("Wall"))
             {
-                Debug.Log("[AK47Weapon] Shot blocked by Wall at " + hit.point);
                 return;
             }
 
-            // Check for player hit
-            string targetKey = GetTargetKeyFromHit(hit);
-            if (!string.IsNullOrEmpty(targetKey))
+            Transform t = hit.collider.transform;
+            while (t != null && !t.CompareTag("Player"))
             {
-                SendDamageToServer(targetKey, shootDamage);
-                return;
+                t = t.parent;
+            }
+
+            if (t != null && client != null)
+            {
+                string targetKey = client.GetKeyForGameObject(t.gameObject);
+
+                if (!string.IsNullOrEmpty(targetKey) && targetKey != myKey)
+                {
+                    SendDamage(client, targetKey, shootDamage);
+                    return;
+                }
             }
         }
     }
+}
 }
