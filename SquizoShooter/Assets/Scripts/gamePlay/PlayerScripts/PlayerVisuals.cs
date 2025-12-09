@@ -79,6 +79,7 @@ public class PlayerVisuals : MonoBehaviour
         if (visualModel != null) visualModel.SetActive(true);
     }
 
+    //TO DO: Meter que el player se vuelva rojo cuando pierda vida por un segundo
     public void UpdateVisualOnHealth(float health)
     {
         if (health <= 0f && visualModel != null)
