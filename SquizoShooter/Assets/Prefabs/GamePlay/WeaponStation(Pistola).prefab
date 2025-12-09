@@ -120,7 +120,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 5457134000329330305, guid: d67c07d48fbb8b1468ff86d3c4260ddb, type: 3}
       propertyPath: weaponID
-      value: 1
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 8262138157878152195, guid: d67c07d48fbb8b1468ff86d3c4260ddb, type: 3}
       propertyPath: m_Name

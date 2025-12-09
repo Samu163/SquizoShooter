@@ -9,7 +9,7 @@ public class HealStation : MonoBehaviour
 
     [Header("Configuración")]
     public float velocidadRotacion = 60f;
-    public float tiempoCooldown = 5.0f; // Sincroniza esto con el servidor
+    public float tiempoCooldown = 5.0f;
 
     [Header("Referencias")]
     public GameObject modeloVisual;
@@ -34,8 +34,7 @@ public class HealStation : MonoBehaviour
             Debug.LogError("¡No se encontró UDPClient en la escena!", this);
         }
 
-        // Estado inicial por defecto (el servidor lo corregirá si es necesario)
-        SetNetworkState(false); // Falso = disponible
+        SetNetworkState(false);
     }
 
     void Update()
@@ -48,7 +47,6 @@ public class HealStation : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // No enviamos peticiones si ya estamos en cooldown
         if (enCooldownLocal || !other.CompareTag("Player"))
         {
             return;
@@ -56,39 +54,32 @@ public class HealStation : MonoBehaviour
 
         PlayerController player = other.GetComponent<PlayerController>();
 
-        // Si es el JUGADOR LOCAL, enviar petición
         if (player != null && player.IsLocalPlayer)
         {
-            enCooldownLocal = true; // Prevenimos spam de peticiones
+            enCooldownLocal = true; 
             udpClient.SendHealRequest(healStationID);
         }
     }
 
-    // --- FUNCIÓN ÚNICA LLAMADA POR EL SERVIDOR ---
-
-    // El servidor nos dice en qué estado ponernos
     public void SetNetworkState(bool isCooldown)
     {
         enCooldownLocal = isCooldown;
-        miCollider.enabled = !isCooldown; // Collider activo si NO está en cooldown
+        miCollider.enabled = !isCooldown;
 
         if (modeloVisual != null) modeloVisual.SetActive(!isCooldown);
         if (canvasCooldown != null) canvasCooldown.SetActive(isCooldown);
 
         if (isCooldown)
         {
-            // Si entramos en cooldown, iniciar la corrutina visual
-            StopAllCoroutines(); // Detener cualquier corrutina anterior
+            StopAllCoroutines();
             StartCoroutine(CooldownVisual());
         }
         else
         {
-            // Si volvemos a estar disponibles, detener corrutinas
             StopAllCoroutines();
         }
     }
 
-    // Corrutina puramente VISUAL para el radial
     private IEnumerator CooldownVisual()
     {
         float tiempoPasado = 0f;

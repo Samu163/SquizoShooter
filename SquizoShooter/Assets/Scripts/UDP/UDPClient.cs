@@ -29,6 +29,8 @@ public class UDPClient : MonoBehaviour
     public List<LookAtPlayer> AllItems = new List<LookAtPlayer>();
     private Dictionary<int, HealStation> healStations = new Dictionary<int, HealStation>();
     private readonly object healStationsLock = new object();
+    private Dictionary<int, WeaponStation> weaponStations = new Dictionary<int, WeaponStation>();
+    private readonly object weaponStationsLock = new object();
 
     private Queue<Action> mainThreadActions = new Queue<Action>();
     private readonly object mainThreadLock = new object();
@@ -50,7 +52,8 @@ public class UDPClient : MonoBehaviour
         HealStationData = 9,
         KillConfirmed = 10,
         Goodbye = 11,
-        WeaponChange = 12 
+        WeaponChange = 12,
+        WeaponStationData = 13
     }
 
     public void StartConnection()
@@ -165,7 +168,11 @@ public class UDPClient : MonoBehaviour
 
                     case MessageType.HealStationData:
                         HandleHealStationData(reader);
-                        break;           
+                        break;
+
+                    case MessageType.WeaponStationData: 
+                        HandleWeaponStationData(reader);
+                        break;
 
                     case MessageType.Goodbye:
                         HandleGoodbye(reader);
@@ -242,18 +249,16 @@ public class UDPClient : MonoBehaviour
         string senderKey = reader.ReadString();
         int weaponID = reader.ReadInt32();
 
-        if (senderKey == clientKey) return;
-
         SafeEnqueueMain(() =>
         {
             lock (cubesLock)
             {
                 if (playerCubes.TryGetValue(senderKey, out GameObject cube) && cube != null)
                 {
-                    var controller = cube.GetComponent<PlayerController>();
-                    if (controller != null)
+                    var weaponManager = cube.GetComponent<WeaponManager>();
+                    if (weaponManager != null)
                     {
-                        controller.SwitchWeaponVisuals(weaponID);
+                        weaponManager.SetWeaponByID(weaponID);
                         Debug.Log($"[Client] Jugador {senderKey} cambió al arma {weaponID}");
                     }
                 }
@@ -383,6 +388,26 @@ public class UDPClient : MonoBehaviour
         });
     }
 
+    void HandleWeaponStationData(BinaryReader reader)
+    {
+        int stationID = reader.ReadInt32();
+        int stateCode = reader.ReadInt32();
+
+        bool isCooldown = (stateCode == 1);
+
+        SafeEnqueueMain(() =>
+        {
+            lock (weaponStationsLock)
+            {
+                if (weaponStations.TryGetValue(stationID, out WeaponStation station))
+                {
+                    station.SetNetworkState(isCooldown);
+                }
+            }
+        });
+    }
+
+
     void HandleKillConfirmed(BinaryReader reader)
     {
         string shooterKey = reader.ReadString();
@@ -464,6 +489,25 @@ public class UDPClient : MonoBehaviour
         }
     }
 
+    public void RegisterWeaponStation(int id, WeaponStation station) 
+    {
+        if (id == -1)
+        {
+            Debug.LogError("Una WeaponStation tiene un ID de -1. ¡Asigna un ID único en el Inspector!", station);
+            return;
+        }
+
+        lock (weaponStationsLock)
+        {
+            if (weaponStations.ContainsKey(id))
+            {
+                Debug.LogWarning($"Ya existe una WeaponStation registrada con ID {id}. Sobrescribiendo.");
+            }
+            weaponStations[id] = station;
+            Debug.Log($"[Client] WeaponStation {id} registrada.");
+        }
+    }
+
     public void SendHealRequest(int stationID)
     {
         if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
@@ -474,6 +518,23 @@ public class UDPClient : MonoBehaviour
             writer.Write((byte)MessageType.HealRequest);
             writer.Write(clientKey);
             writer.Write(stationID);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
+    }
+
+    public void SendWeaponRequest(int stationID, int weaponID)
+    {
+        if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
+
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.WeaponChange); 
+            writer.Write(clientKey);
+            writer.Write(stationID);
+            writer.Write(weaponID);
 
             byte[] data = ms.ToArray();
             SendBinary(data);
@@ -572,22 +633,6 @@ public class UDPClient : MonoBehaviour
         {
             writer.Write((byte)MessageType.ShootAnim);
             writer.Write(clientKey);
-
-            byte[] data = ms.ToArray();
-            SendBinary(data);
-        }
-    }
-    public void SendWeaponChange(int weaponID)
-    {
-        if (!isConnected || clientSocket == null) return;
-        if (string.IsNullOrEmpty(clientKey)) return;
-
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.WeaponChange);
-            writer.Write(clientKey);
-            writer.Write(weaponID);
 
             byte[] data = ms.ToArray();
             SendBinary(data);

@@ -20,14 +20,13 @@ public class UDPServer : MonoBehaviour
     private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, float> playerHealth = new Dictionary<string, float>();
-    private readonly Dictionary<string, int> playerWeapons = new Dictionary<string, int>(); // NEW: track weapons
+    private readonly Dictionary<string, int> playerWeapons = new Dictionary<string, int>(); 
 
     private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>();
     private const float HEAL_STATION_COOLDOWN_TIME = 5.0f;
 
     private readonly object clientsLock = new object();
 
-    // Message type codes
     private enum MessageType : byte
     {
         Handshake = 1,
@@ -41,7 +40,8 @@ public class UDPServer : MonoBehaviour
         HealStationData = 9,
         KillConfirmed = 10,
         Goodbye = 11,
-        WeaponChange = 12
+        WeaponChange = 12,
+        WeaponStationData = 13 
     }
 
     public void StartServer()
@@ -141,8 +141,8 @@ public class UDPServer : MonoBehaviour
                         HandleHealRequest(reader);
                         break;
 
-                    case MessageType.WeaponChange:
-                        HandleWeaponChange(reader);
+                    case MessageType.WeaponChange: 
+                        HandleWeaponRequest(reader);
                         break;
 
                     case MessageType.Goodbye:
@@ -170,7 +170,7 @@ public class UDPServer : MonoBehaviour
             connectedClients[newKey] = remote;
             playerPositions[newKey] = Vector3.zero;
             playerHealth[newKey] = 100f;
-            playerWeapons[newKey] = 1; // Default weapon: Pistol
+            playerWeapons[newKey] = 1; 
         }
 
         Debug.Log($"[Server] HANDSHAKE de {remote}, asignada key: {newKey}");
@@ -344,18 +344,45 @@ public class UDPServer : MonoBehaviour
         }
     }
 
-    void HandleWeaponChange(BinaryReader reader)
+    void HandleWeaponRequest(BinaryReader reader)
     {
         string senderKey = reader.ReadString();
-        int weaponID = reader.ReadInt32();
+        int stationID = reader.ReadInt32();
+        int weaponID = reader.ReadInt32(); 
+
+        bool wasApproved = false;
 
         lock (clientsLock)
         {
-            playerWeapons[senderKey] = weaponID;
+            if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
+            {
+                Debug.Log($"[Server] Petición de arma para {stationID} denegada (ya en cooldown).");
+                wasApproved = false;
+            }
+            else
+            {
+                Debug.Log($"[Server] Petición de arma para {stationID} APROBADA. Iniciando cooldown y cambiando a arma {weaponID}.");
+                wasApproved = true;
+
+                healStationStates[stationID] = true;
+
+                playerWeapons[senderKey] = weaponID;
+            }
         }
 
-        Debug.Log($"[Server] Player {senderKey} changed weapon to ID {weaponID}");
-        BroadcastWeaponChange(senderKey, weaponID);
+        if (wasApproved)
+        {
+            BroadcastWeaponChange(senderKey, weaponID);
+
+            BroadcastWeaponStationState(stationID, 1);
+
+            Timer cooldownTimer = new Timer(
+                (state) => EndWeaponStationCooldown(stationID),
+                null,
+                (int)(HEAL_STATION_COOLDOWN_TIME * 1000),
+                Timeout.Infinite
+            );
+        }
     }
 
     void HandleGoodbye(BinaryReader reader)
@@ -374,6 +401,18 @@ public class UDPServer : MonoBehaviour
         }
 
         BroadcastHealStationState(stationID, 0);
+    }
+
+    void EndWeaponStationCooldown(int stationID)
+    {
+        Debug.Log($"[Server] Cooldown de WeaponStation {stationID} terminado.");
+
+        lock (clientsLock)
+        {
+            healStationStates[stationID] = false;
+        }
+
+        BroadcastWeaponStationState(stationID, 0); 
     }
 
     void SendKillConfirmation(string shooterKey)
@@ -480,7 +519,7 @@ public class UDPServer : MonoBehaviour
         {
             if (healStationStates.Count == 0) return;
 
-            Debug.Log($"[Server] Enviando {healStationStates.Count} estados de HealStation al nuevo cliente...");
+            Debug.Log($"[Server] Enviando {healStationStates.Count} estados de HealStation/WeaponStation al nuevo cliente...");
 
             foreach (var kvp in healStationStates)
             {
@@ -488,10 +527,18 @@ public class UDPServer : MonoBehaviour
                 bool isCooldown = kvp.Value;
                 int stateCode = isCooldown ? 1 : 0;
 
+
+                MessageType msgToSend = MessageType.HealStationData;
+                if (stationID > 100)
+                {
+                    msgToSend = MessageType.WeaponStationData;
+                }
+
+
                 using (MemoryStream ms = new MemoryStream())
                 using (BinaryWriter writer = new BinaryWriter(ms))
                 {
-                    writer.Write((byte)MessageType.HealStationData);
+                    writer.Write((byte)msgToSend);
                     writer.Write(stationID);
                     writer.Write(stateCode);
 
@@ -669,6 +716,33 @@ public class UDPServer : MonoBehaviour
             {
                 try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
                 catch (Exception e) { Debug.LogWarning("[Server] Error enviando WEAPON_CHANGE: " + e.Message); }
+            }
+        }
+    }
+
+    void BroadcastWeaponStationState(int stationID, int stateCode)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.WeaponStationData);
+            writer.Write(stationID);
+            writer.Write(stateCode);
+
+            byte[] data = ms.ToArray();
+
+            List<EndPoint> snapshot;
+            lock (clientsLock)
+            {
+                snapshot = new List<EndPoint>(connectedClients.Values);
+            }
+
+            Debug.Log($"[Server] Transmitiendo estado de WeaponStation {stationID} a {snapshot.Count} clientes. Estado: {stateCode}");
+
+            foreach (var ep in snapshot)
+            {
+                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
+                catch (Exception e) { Debug.LogWarning("[Server] Error enviando WEAPON_STATION_DATA: " + e.Message); }
             }
         }
     }

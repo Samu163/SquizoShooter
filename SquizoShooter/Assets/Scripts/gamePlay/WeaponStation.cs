@@ -5,12 +5,12 @@ using System.Collections;
 public class WeaponStation : MonoBehaviour
 {
     [Header("Configuración de Red")]
-    public int weaponStationID = -1;
-    public int weaponID = 1;
+    public int weaponStationID = 101; 
+    public int weaponID = 2; 
 
     [Header("Configuración")]
     public float velocidadRotacion = 60f;
-    public float tiempoCooldown = 5.0f; // Sincroniza esto con el servidor
+    public float tiempoCooldown = 5.0f;
 
     [Header("Referencias")]
     public GameObject modeloVisual;
@@ -19,7 +19,7 @@ public class WeaponStation : MonoBehaviour
 
     private UDPClient udpClient;
     private Collider miCollider;
-    private bool enCooldownLocal = false;
+    private bool enCooldownLocal = false; 
 
     void Start()
     {
@@ -28,16 +28,14 @@ public class WeaponStation : MonoBehaviour
 
         if (udpClient != null)
         {
-            //Modificar esto para que sea RegisterWeaponStation
-            //udpClient.RegisterWeaponStation(healStationID, this);
+            udpClient.RegisterWeaponStation(weaponStationID, this);
         }
         else
         {
             Debug.LogError("¡No se encontró UDPClient en la escena!", this);
         }
 
-        // Estado inicial por defecto (el servidor lo corregirá si es necesario)
-        SetNetworkState(false); // Falso = disponible
+        SetNetworkState(false);
     }
 
     void Update()
@@ -50,7 +48,6 @@ public class WeaponStation : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // No enviamos peticiones si ya estamos en cooldown
         if (enCooldownLocal || !other.CompareTag("Player"))
         {
             return;
@@ -58,42 +55,34 @@ public class WeaponStation : MonoBehaviour
 
         PlayerController player = other.GetComponent<PlayerController>();
 
-        // Si es el JUGADOR LOCAL, enviar petición
-        if (player != null && player.IsLocalPlayer)
+        if (player != null && player.IsLocalPlayer && udpClient != null)
         {
-            enCooldownLocal = true; // Prevenimos spam de peticiones
-            //Modificar esto para que sea SendWeaponRequest
-            //udpClient.SendWeaponRequest(weaponStationID);
-            WeaponManager shooting = player.GetComponent<WeaponManager>();
-            shooting.SwitchWeapon(weaponID);
+
+            enCooldownLocal = true;
+
+            udpClient.SendWeaponRequest(weaponStationID, weaponID);
         }
     }
 
-    // --- FUNCIÓN ÚNICA LLAMADA POR EL SERVIDOR ---
-
-    // El servidor nos dice en qué estado ponernos
     public void SetNetworkState(bool isCooldown)
     {
         enCooldownLocal = isCooldown;
-        miCollider.enabled = !isCooldown; // Collider activo si NO está en cooldown
+        miCollider.enabled = !isCooldown;
 
         if (modeloVisual != null) modeloVisual.SetActive(!isCooldown);
         if (canvasCooldown != null) canvasCooldown.SetActive(isCooldown);
 
         if (isCooldown)
         {
-            // Si entramos en cooldown, iniciar la corrutina visual
-            StopAllCoroutines(); // Detener cualquier corrutina anterior
+            StopAllCoroutines();
             StartCoroutine(CooldownVisual());
         }
         else
         {
-            // Si volvemos a estar disponibles, detener corrutinas
             StopAllCoroutines();
         }
     }
 
-    // Corrutina puramente VISUAL para el radial
     private IEnumerator CooldownVisual()
     {
         float tiempoPasado = 0f;

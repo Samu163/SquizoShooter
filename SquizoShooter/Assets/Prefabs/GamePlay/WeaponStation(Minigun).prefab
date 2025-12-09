@@ -54,7 +54,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2734053055331874761, guid: b596541791fde554f9fdc4e2ac8e759c, type: 3}
       propertyPath: weaponID
-      value: 3
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:
