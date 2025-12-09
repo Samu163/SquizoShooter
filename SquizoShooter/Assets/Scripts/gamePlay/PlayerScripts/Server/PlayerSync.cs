@@ -36,16 +36,24 @@ public class PlayerSync : MonoBehaviour
         if (udpClient != null && udpClient.IsConnected)
         {
             float yaw = playerController.transform.eulerAngles.y;
-            Vector3 currentRotation = new Vector3(0, yaw, 0);
 
-            if (Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.y, currentRotation.y)) > rotationThreshold)
+            float pitch = 0f;
+            if (playerController.GetPlayerCamera() != null)
+            {
+                pitch = playerController.GetPlayerCamera().CameraTransform.eulerAngles.x;
+            }
+            Vector3 currentRotation = new Vector3(pitch, yaw, 0);
+
+            bool pitchChanged = Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.x, currentRotation.x)) > rotationThreshold;
+            bool yawChanged = Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.y, currentRotation.y)) > rotationThreshold;
+
+            if (pitchChanged || yawChanged)
             {
                 udpClient.SendCubeRotation(currentRotation);
                 lastSentRotation = currentRotation;
             }
         }
     }
-
     public void SendPlayerDataToServer()
     {
         if (udpClient != null && udpClient.IsConnected)

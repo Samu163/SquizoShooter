@@ -91,7 +91,7 @@ public class PlayerVisuals : MonoBehaviour
     public void UpdateAiming(float pitch)
     {
         if (pitch > 180) pitch -= 360;
-        currentPitch = pitch;
+        currentPitch = Mathf.Clamp(pitch, -90f, 90f);
     }
 
     void LateUpdate()
@@ -100,8 +100,8 @@ public class PlayerVisuals : MonoBehaviour
 
         if (aimPivot != null)
         {
-            Vector3 currentLocalRotation = aimPivot.localEulerAngles;
-            aimPivot.localRotation = Quaternion.Euler(currentPitch, currentLocalRotation.y, currentLocalRotation.z);
+            Vector3 currentLocalEuler = aimPivot.localEulerAngles;
+            aimPivot.localRotation = Quaternion.Euler(currentPitch, currentLocalEuler.y, currentLocalEuler.z);
         }
     }
 }
