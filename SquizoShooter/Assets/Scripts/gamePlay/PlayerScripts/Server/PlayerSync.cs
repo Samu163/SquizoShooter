@@ -36,17 +36,16 @@ public class PlayerSync : MonoBehaviour
         if (udpClient != null && udpClient.IsConnected)
         {
             float yaw = playerController.transform.eulerAngles.y;
-            float pitch = playerController.GetPlayerCamera().CameraTransform.localEulerAngles.x;
-            Vector3 currentRotation = new Vector3(pitch, yaw, 0);
+            Vector3 currentRotation = new Vector3(0, yaw, 0);
 
-            if (Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.y, currentRotation.y)) > rotationThreshold ||
-                Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.x, currentRotation.x)) > rotationThreshold)
+            if (Mathf.Abs(Mathf.DeltaAngle(lastSentRotation.y, currentRotation.y)) > rotationThreshold)
             {
                 udpClient.SendCubeRotation(currentRotation);
                 lastSentRotation = currentRotation;
             }
         }
     }
+
     public void SendPlayerDataToServer()
     {
         if (udpClient != null && udpClient.IsConnected)
@@ -70,6 +69,14 @@ public class PlayerSync : MonoBehaviour
             lastSentPosition = Vector3.zero;
             udpClient.SendCubeMovement(spawnPos);
             udpClient.SendPlayerHealth(health);
+        }
+    }
+
+    public void SendWeaponChange(int weaponID)
+    {
+        if (udpClient != null && udpClient.IsConnected)
+        {
+            udpClient.SendWeaponChange(weaponID);
         }
     }
 

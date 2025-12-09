@@ -6,7 +6,7 @@ public class PlayerInput : MonoBehaviour
     // Events/Actions
     public event Action OnJumpPressed;
     public event Action OnShootPressed;
-    public event Action OnShootHeld;   // NEW: fired while mouse is held
+    public event Action OnShootHeld;  
     public event Action OnSlidePressed;
 
     // Continuous input (no events, just read)
@@ -47,13 +47,13 @@ public class PlayerInput : MonoBehaviour
             OnJumpPressed?.Invoke();
         }
 
-        // Mouse down = single tap shoot (pistol/shotgun still work with this)
+        // Mouse down = single tap shoot
         if (Input.GetMouseButtonDown(0))
         {
             OnShootPressed?.Invoke();
         }
 
-        // Mouse held = continuous fire (AK-47 or any automatic)
+        // Mouse held = continuous fire
         if (Input.GetMouseButton(0))
         {
             OnShootHeld?.Invoke();

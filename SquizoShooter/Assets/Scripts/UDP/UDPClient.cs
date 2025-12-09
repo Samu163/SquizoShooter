@@ -49,7 +49,8 @@ public class UDPClient : MonoBehaviour
         HealRequest = 8,
         HealStationData = 9,
         KillConfirmed = 10,
-        Goodbye = 11
+        Goodbye = 11,
+        WeaponChange = 12 
     }
 
     public void StartConnection()
@@ -138,10 +139,6 @@ public class UDPClient : MonoBehaviour
                         HandleWelcome(reader);
                         break;
 
-                    case MessageType.ShootAnim:
-                        HandleShootAnim(reader);
-                        break;
-
                     case MessageType.PlayerData:
                         HandlePlayerData(reader);
                         break;
@@ -154,13 +151,21 @@ public class UDPClient : MonoBehaviour
                         HandleRotate(reader);
                         break;
 
-                    case MessageType.HealStationData:
-                        HandleHealStationData(reader);
+                    case MessageType.ShootAnim:
+                        HandleShootAnim(reader);
+                        break;
+
+                    case MessageType.WeaponChange:
+                        HandleWeaponChange(reader);
                         break;
 
                     case MessageType.KillConfirmed:
                         HandleKillConfirmed(reader);
                         break;
+
+                    case MessageType.HealStationData:
+                        HandleHealStationData(reader);
+                        break;           
 
                     case MessageType.Goodbye:
                         HandleGoodbye(reader);
@@ -226,6 +231,30 @@ public class UDPClient : MonoBehaviour
                     if (controller != null)
                     {
                         controller.PlayShootAnimation();
+                    }
+                }
+            }
+        });
+    }
+
+    void HandleWeaponChange(BinaryReader reader)
+    {
+        string senderKey = reader.ReadString();
+        int weaponID = reader.ReadInt32();
+
+        if (senderKey == clientKey) return;
+
+        SafeEnqueueMain(() =>
+        {
+            lock (cubesLock)
+            {
+                if (playerCubes.TryGetValue(senderKey, out GameObject cube) && cube != null)
+                {
+                    var controller = cube.GetComponent<PlayerController>();
+                    if (controller != null)
+                    {
+                        controller.SwitchWeaponVisuals(weaponID);
+                        Debug.Log($"[Client] Jugador {senderKey} cambió al arma {weaponID}");
                     }
                 }
             }
@@ -543,6 +572,22 @@ public class UDPClient : MonoBehaviour
         {
             writer.Write((byte)MessageType.ShootAnim);
             writer.Write(clientKey);
+
+            byte[] data = ms.ToArray();
+            SendBinary(data);
+        }
+    }
+    public void SendWeaponChange(int weaponID)
+    {
+        if (!isConnected || clientSocket == null) return;
+        if (string.IsNullOrEmpty(clientKey)) return;
+
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.WeaponChange);
+            writer.Write(clientKey);
+            writer.Write(weaponID);
 
             byte[] data = ms.ToArray();
             SendBinary(data);

@@ -9,13 +9,14 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5451821179806121724}
+  - component: {fileID: 2433601640929122139}
   m_Layer: 0
   m_Name: ESCOPETON
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &5451821179806121724
 Transform:
   m_ObjectHideFlags: 0
@@ -32,6 +33,28 @@ Transform:
   - {fileID: 5553595069237382752}
   m_Father: {fileID: 7688033282198593840}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2433601640929122139
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 57083239689440838}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 524be6d5a754b7740ac46f4e6dc0c606, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShotgunWeapon
+  shootRange: 100
+  shootDamage: 25
+  fireRate: 4
+  recoilPitch: 5
+  recoilYaw: 1
+  recoilBack: 0.2
+  weaponModel: {fileID: 57083239689440838}
+  pelletCount: 6
+  spreadAngle: 6
+  perPelletDamage: 9
 --- !u!1 &4720705549345781928
 GameObject:
   m_ObjectHideFlags: 0
@@ -277,6 +300,7 @@ GameObject:
   - component: {fileID: 8386853341909703002}
   - component: {fileID: 5909041087245816382}
   - component: {fileID: 329999652210186343}
+  - component: {fileID: 6795481123844834663}
   m_Layer: 0
   m_Name: PlayerController
   m_TagString: Player
@@ -497,18 +521,10 @@ MonoBehaviour:
   recoilPitch: 5
   recoilYaw: 1
   recoilBack: 0.2
-  currentWeaponId: 1
-  shotgunPellets: 6
-  shotgunSpreadAngle: 6
-  shotgunPerPelletDamage: 9
   showShootGizmos: 1
   gizmoLineColor: {r: 1, g: 0, b: 0, a: 1}
   gizmoHitColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   gizmoHitRadius: 0.25
-  gizmoPersistSeconds: 0.6
-  pistolModel: {fileID: 2051243143252198227}
-  ak47Model: {fileID: 2107831988451578880}
-  shotgunModel: {fileID: 57083239689440838}
 --- !u!114 &6838780169586237513
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -534,6 +550,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerVisuals
   visualModel: {fileID: 7989583440541540091}
+  pistolModel: {fileID: 2051243143252198227}
+  minigunModel: {fileID: 2107831988451578880}
+  shotgunModel: {fileID: 57083239689440838}
   Animator: {fileID: 9077353619581514875}
   aimPivot: {fileID: 4203585546040098731}
 --- !u!114 &5909041087245816382
@@ -575,6 +594,22 @@ MonoBehaviour:
   wallAttachWindow: 0.35
   wallJumpCoyoteTime: 0.2
   wallStickDistance: 0.5
+--- !u!114 &6795481123844834663
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c06cc7a25ee1b0d4c84b2ac52d8134e8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponManager
+  availableWeapons:
+  - {fileID: 8068478369397602952}
+  - {fileID: 6324535325169665588}
+  - {fileID: 2433601640929122139}
 --- !u!1 &8166014812342378928
 GameObject:
   m_ObjectHideFlags: 0
@@ -784,7 +819,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2434760128299978445, guid: 1e4cf3028f46667438fe271981540921, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
@@ -801,7 +836,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6324535325169665588}
   m_SourcePrefab: {fileID: 100100000, guid: 1e4cf3028f46667438fe271981540921, type: 3}
 --- !u!4 &1588458581981449914 stripped
 Transform:
@@ -813,6 +851,25 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
   m_PrefabInstance: {fileID: 1261553079247022417}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &6324535325169665588
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2107831988451578880}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a3dfb27083b7954bb90580df088acfb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MiniGunWeapon
+  shootRange: 100
+  shootDamage: 25
+  fireRate: 4
+  recoilPitch: 5
+  recoilYaw: 1
+  recoilBack: 0.2
+  weaponModel: {fileID: 2107831988451578880}
 --- !u!1001 &5375305880243546507
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1063,7 +1120,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8164078558771037576, guid: 69512df507be155439a3dff17f385906, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1081,12 +1138,34 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 69512df507be155439a3dff17f385906, type: 3}
       insertIndex: -1
       addedObject: {fileID: 9077353619581514875}
+    - targetCorrespondingSourceObject: {fileID: 8164078558771037576, guid: 69512df507be155439a3dff17f385906, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8068478369397602952}
   m_SourcePrefab: {fileID: 100100000, guid: 69512df507be155439a3dff17f385906, type: 3}
 --- !u!1 &2051243143252198227 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8164078558771037576, guid: 69512df507be155439a3dff17f385906, type: 3}
   m_PrefabInstance: {fileID: 7871123320411686619}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &8068478369397602952
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2051243143252198227}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 30c225799e99dfa488554b01d0391369, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PistolWeapon
+  shootRange: 100
+  shootDamage: 25
+  fireRate: 4
+  recoilPitch: 5
+  recoilYaw: 1
+  recoilBack: 0.2
+  weaponModel: {fileID: 2051243143252198227}
 --- !u!1 &7060150138804878218 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 69512df507be155439a3dff17f385906, type: 3}

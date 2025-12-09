@@ -13,6 +13,7 @@ public class PlayerController : MonoBehaviour
     private PlayerInput playerInput;
     private PlayerVisuals playerVisuals;
     private PlayerCamera playerCamera;
+    private WeaponManager weaponManager;
 
     private CharacterController controller;
     private bool isLocalPlayer = false;
@@ -34,6 +35,7 @@ public class PlayerController : MonoBehaviour
         playerInput = GetComponent<PlayerInput>();
         playerVisuals = GetComponent<PlayerVisuals>();
         playerCamera = GetComponent<PlayerCamera>();
+        weaponManager = GetComponent<WeaponManager>();
 
         // Validate components
         if (lifeComponent == null) Debug.LogError("[PlayerController] LifeComponent is missing!");
@@ -45,6 +47,7 @@ public class PlayerController : MonoBehaviour
         if (playerInput == null) Debug.LogError("[PlayerController] PlayerInput is missing!");
         if (playerVisuals == null) Debug.LogError("[PlayerController] PlayerVisuals is missing!");
         if (playerCamera == null) Debug.LogError("[PlayerController] PlayerCamera is missing!");
+        if (weaponManager == null) Debug.LogError("[PlayerController] WeaponManager is missing!");
     }
 
     void Start()
@@ -64,7 +67,8 @@ public class PlayerController : MonoBehaviour
         playerMovement.Initialize(controller, this);
         wallJumpComponent.Initialize(controller, this, playerMovement);
         slideComponent.Initialize(controller, this, playerMovement);
-        playerShooting.Initialize(this, playerSync, playerCamera);
+        weaponManager.Initialize(this, playerSync, playerCamera);
+        playerShooting.Initialize(this, weaponManager);
         playerSync.Initialize(this);
         playerInput.Initialize(this);
         playerVisuals.Initialize(transform);
@@ -104,20 +108,18 @@ public class PlayerController : MonoBehaviour
     void HandleShootPressed()
     {
         if (IsDead) return;
-        var shooter = GetPlayerShooting();
-        if (shooter != null)
+        if (playerShooting != null)
         {
-            shooter.TryShoot();
+            playerShooting.TryShoot();
         }
     }
 
     // NEW: called every frame while mouse button is held
     void HandleShootHeld()
     {
-        var shooter = GetPlayerShooting();
-        if (shooter != null)
+        if (playerShooting != null)
         {
-            shooter.TryShoot(); // rate-limited inside PlayerShooting
+            playerShooting.TryShoot();
         }
     }
 
@@ -136,6 +138,11 @@ public class PlayerController : MonoBehaviour
             playerCamera.EnableCameraIfNeeded();
             wallJumpComponent.DetectWallRun();
             playerMovement.HandleMovement(wallJumpComponent, slideComponent);
+            if (weaponManager != null)
+            {
+                //DEBUGING
+                weaponManager.HandleWeaponSwitchInput();
+            }
             playerSync.SendPositionToServer();
             playerSync.SendRotationToServer();
             playerSync.SendPlayerDataToServer();
@@ -283,6 +290,11 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    public void SwitchWeaponVisuals(int weaponID)
+    {
+        if (playerVisuals != null) playerVisuals.SetEquippedWeapon(weaponID);
+    }
+
     // Getters
     public CharacterController GetController() => controller;
     public LifeComponent GetLifeComponent() => lifeComponent;
@@ -294,4 +306,5 @@ public class PlayerController : MonoBehaviour
     public WallJumpComponent GetWallJumpComponent() => wallJumpComponent;
     public SlideComponent GetSlideComponent() => slideComponent;
     public PlayerShooting GetPlayerShooting() => playerShooting;
+    public WeaponManager GetWeaponManager() => weaponManager;
 }

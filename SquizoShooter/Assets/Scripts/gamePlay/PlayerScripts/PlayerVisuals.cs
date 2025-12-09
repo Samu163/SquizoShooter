@@ -5,6 +5,11 @@ public class PlayerVisuals : MonoBehaviour
     [Header("Visual Settings")]
     [SerializeField] private GameObject visualModel;
 
+    [Header("Weapon Models")]
+    [SerializeField] private GameObject pistolModel;   // ID 1
+    [SerializeField] private GameObject minigunModel;  // ID 2
+    [SerializeField] private GameObject shotgunModel;  // ID 3
+
     [Header("Gun Visual Settings")]
     [SerializeField] private Animator Animator;
 
@@ -12,7 +17,7 @@ public class PlayerVisuals : MonoBehaviour
     [SerializeField] private Transform aimPivot;
 
     private float currentPitch = 0f;
-    private bool isLocalPlayer = false; 
+    private bool isLocalPlayer = false;
 
     public void Initialize(Transform playerTransform)
     {
@@ -26,6 +31,31 @@ public class PlayerVisuals : MonoBehaviour
                     break;
                 }
             }
+        }
+    }
+
+    public void SetEquippedWeapon(int weaponID)
+    {
+        // 1. Desactivar todas primero
+        if (pistolModel) pistolModel.SetActive(false);
+        if (minigunModel) minigunModel.SetActive(false);
+        if (shotgunModel) shotgunModel.SetActive(false);
+
+        // 2. Activar la correcta según el ID definido en tus scripts de armas
+        switch (weaponID)
+        {
+            case 1: // PistolWeapon.cs tiene ID 1
+                if (pistolModel) pistolModel.SetActive(true);
+                break;
+            case 2: // MiniGunWeapon.cs tiene ID 2
+                if (minigunModel) minigunModel.SetActive(true);
+                break;
+            case 3: // ShotgunWeapon.cs tiene ID 3
+                if (shotgunModel) shotgunModel.SetActive(true);
+                break;
+            default:
+                Debug.LogWarning($"[PlayerVisuals] ID de arma desconocido: {weaponID}");
+                break;
         }
     }
 

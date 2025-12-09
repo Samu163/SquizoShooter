@@ -20,6 +20,7 @@ public class UDPServer : MonoBehaviour
     private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, float> playerHealth = new Dictionary<string, float>();
+    private readonly Dictionary<string, int> playerWeapons = new Dictionary<string, int>(); // NEW: track weapons
 
     private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>();
     private const float HEAL_STATION_COOLDOWN_TIME = 5.0f;
@@ -39,7 +40,8 @@ public class UDPServer : MonoBehaviour
         HealRequest = 8,
         HealStationData = 9,
         KillConfirmed = 10,
-        Goodbye = 11
+        Goodbye = 11,
+        WeaponChange = 12
     }
 
     public void StartServer()
@@ -139,6 +141,10 @@ public class UDPServer : MonoBehaviour
                         HandleHealRequest(reader);
                         break;
 
+                    case MessageType.WeaponChange:
+                        HandleWeaponChange(reader);
+                        break;
+
                     case MessageType.Goodbye:
                         HandleGoodbye(reader);
                         break;
@@ -164,6 +170,7 @@ public class UDPServer : MonoBehaviour
             connectedClients[newKey] = remote;
             playerPositions[newKey] = Vector3.zero;
             playerHealth[newKey] = 100f;
+            playerWeapons[newKey] = 1; // Default weapon: Pistol
         }
 
         Debug.Log($"[Server] HANDSHAKE de {remote}, asignada key: {newKey}");
@@ -337,6 +344,20 @@ public class UDPServer : MonoBehaviour
         }
     }
 
+    void HandleWeaponChange(BinaryReader reader)
+    {
+        string senderKey = reader.ReadString();
+        int weaponID = reader.ReadInt32();
+
+        lock (clientsLock)
+        {
+            playerWeapons[senderKey] = weaponID;
+        }
+
+        Debug.Log($"[Server] Player {senderKey} changed weapon to ID {weaponID}");
+        BroadcastWeaponChange(senderKey, weaponID);
+    }
+
     void HandleGoodbye(BinaryReader reader)
     {
         string key = reader.ReadString();
@@ -425,6 +446,21 @@ public class UDPServer : MonoBehaviour
                         writer.Write((byte)MessageType.PlayerData);
                         writer.Write(key);
                         writer.Write(h);
+
+                        byte[] data = ms.ToArray();
+                        SendBinaryToClient(data, remote);
+                    }
+                }
+
+                // Send weapon state
+                if (playerWeapons.TryGetValue(key, out int weaponID))
+                {
+                    using (MemoryStream ms = new MemoryStream())
+                    using (BinaryWriter writer = new BinaryWriter(ms))
+                    {
+                        writer.Write((byte)MessageType.WeaponChange);
+                        writer.Write(key);
+                        writer.Write(weaponID);
 
                         byte[] data = ms.ToArray();
                         SendBinaryToClient(data, remote);
@@ -612,6 +648,31 @@ public class UDPServer : MonoBehaviour
         }
     }
 
+    void BroadcastWeaponChange(string senderKey, int weaponID)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.WeaponChange);
+            writer.Write(senderKey);
+            writer.Write(weaponID);
+
+            byte[] data = ms.ToArray();
+
+            List<EndPoint> snapshot;
+            lock (clientsLock)
+            {
+                snapshot = new List<EndPoint>(connectedClients.Values);
+            }
+
+            foreach (var ep in snapshot)
+            {
+                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
+                catch (Exception e) { Debug.LogWarning("[Server] Error enviando WEAPON_CHANGE: " + e.Message); }
+            }
+        }
+    }
+
     void SendBinaryToClient(byte[] data, EndPoint remote)
     {
         try
@@ -643,6 +704,10 @@ public class UDPServer : MonoBehaviour
             if (playerRotations.ContainsKey(key))
             {
                 playerRotations.Remove(key);
+            }
+            if (playerWeapons.ContainsKey(key))
+            {
+                playerWeapons.Remove(key);
             }
         }
 
