@@ -46,7 +46,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShotgunWeapon
   shootRange: 100
-  shootDamage: 25
+  shootDamage: 50
   fireRate: 4
   recoilPitch: 5
   recoilYaw: 1
@@ -54,7 +54,6 @@ MonoBehaviour:
   weaponModel: {fileID: 57083239689440838}
   pelletCount: 6
   spreadAngle: 6
-  perPelletDamage: 9
 --- !u!1 &4720705549345781928
 GameObject:
   m_ObjectHideFlags: 0
@@ -487,10 +486,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cbc3d1e6f7263ad41b608aab810271e1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
-  walkSpeed: 5
-  sprintSpeed: 8
-  jumpForce: 8
-  gravity: -20
+  walkSpeed: 10
+  sprintSpeed: 15
+  jumpForce: 3
+  gravity: -30
 --- !u!114 &6931173188037855100
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -515,16 +514,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe579d81cfa3b6e46844b495a759fd76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerShooting
-  shootRange: 100
-  shootDamage: 25
-  fireRate: 4
-  recoilPitch: 5
-  recoilYaw: 1
-  recoilBack: 0.2
-  showShootGizmos: 1
-  gizmoLineColor: {r: 1, g: 0, b: 0, a: 1}
-  gizmoHitColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
-  gizmoHitRadius: 0.25
 --- !u!114 &6838780169586237513
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -586,9 +575,9 @@ MonoBehaviour:
   wallCheckDistance: 0.8
   wallSlideFallSpeed: -2
   wallJumpPush: 6
-  wallRunMaxTime: 1.5
-  wallRunGravity: -2
-  wallRunSpeed: 5
+  wallRunMaxTime: 5
+  wallRunGravity: 0
+  wallRunSpeed: 10
   minWallAttachFallSpeed: -0.5
   wallReattachCooldown: 0.25
   wallAttachWindow: 0.35
@@ -864,7 +853,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MiniGunWeapon
   shootRange: 100
-  shootDamage: 25
+  shootDamage: 10
   fireRate: 4
   recoilPitch: 5
   recoilYaw: 1
