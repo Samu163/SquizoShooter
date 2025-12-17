@@ -45,11 +45,9 @@ public class WeaponManager : MonoBehaviour
     public void SwitchWeapon(int weaponIndex)
     {
         if (weaponIndex < 0 || weaponIndex >= availableWeapons.Count) return;
-        if (weaponIndex == currentWeaponIndex) return;
+        if (weaponIndex == currentWeaponIndex && currentWeapon != null) return;
 
         EquipWeapon(weaponIndex);
-
-        // Sync weapon change with server
         if (playerSync != null)
         {
             playerSync.SendWeaponChange(CurrentWeaponID);
@@ -58,22 +56,24 @@ public class WeaponManager : MonoBehaviour
 
     void EquipWeapon(int index)
     {
-        // Deactivate current weapon
         if (currentWeapon != null)
         {
             currentWeapon.SetActive(false);
         }
 
-        // Activate new weapon
         currentWeaponIndex = index;
         currentWeapon = availableWeapons[index];
 
         if (currentWeapon != null)
         {
             currentWeapon.SetActive(true);
-        }
+            if (playerController != null)
+            {
+                playerController.SwitchWeaponVisuals(currentWeapon.WeaponID);
+            }
 
-        Debug.Log($"[WeaponManager] Equipped weapon: {currentWeapon?.GetType().Name} (ID: {CurrentWeaponID})");
+            Debug.Log($"[WeaponManager] Equipped: {currentWeapon.WeaponID}");
+        }
     }
 
     public void SetWeaponByID(int weaponID)
@@ -82,28 +82,17 @@ public class WeaponManager : MonoBehaviour
         {
             if (availableWeapons[i] != null && availableWeapons[i].WeaponID == weaponID)
             {
+                if (currentWeapon != null && currentWeapon.WeaponID == weaponID) return;
+
                 EquipWeapon(i);
                 return;
             }
         }
-
-        Debug.LogWarning($"[WeaponManager] Weapon with ID {weaponID} not found!");
     }
-
     public void HandleWeaponSwitchInput()
     {
-        // Number keys 1-3 for direct weapon selection
-        if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
-        {
-            SwitchWeapon(0);
-        }
-        else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
-        {
-            SwitchWeapon(1);
-        }
-        else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
-        {
-            SwitchWeapon(2);
-        }       
+        if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchWeapon(0);
+        else if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchWeapon(1);
+        else if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchWeapon(2);
     }
 }

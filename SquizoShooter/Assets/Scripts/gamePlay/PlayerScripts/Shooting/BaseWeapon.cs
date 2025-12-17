@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public abstract class BaseWeapon : MonoBehaviour
@@ -14,6 +15,9 @@ public abstract class BaseWeapon : MonoBehaviour
 
     [Header("Visuals")]
     [SerializeField] protected GameObject weaponModel;
+    [SerializeField] protected Transform firePoint;
+    [SerializeField] protected GameObject bulletTrailPrefab;
+    private static List<BulletTrail> bulletPool = new List<BulletTrail>();
 
     protected float lastFireTime = 0f;
     public int WeaponID { get; protected set; }
@@ -31,7 +35,49 @@ public abstract class BaseWeapon : MonoBehaviour
     public virtual void PerformShoot(Transform shootOrigin, UDPClient udpClient, string myKey)
     {
         lastFireTime = Time.time;
+        Vector3 targetPoint = shootOrigin.position + (shootOrigin.forward * shootRange);
+        if (Physics.Raycast(shootOrigin.position, shootOrigin.forward, out RaycastHit hit, shootRange))
+        {
+            if (!hit.collider.isTrigger) 
+                targetPoint = hit.point;
+        }
+
+        if (firePoint != null)
+        {
+            CreateTrail(firePoint.position, targetPoint);
+        }
+
         OnShootLogic(shootOrigin, udpClient, myKey);
+    }
+    public virtual void SimulateShootVisualsForNetwork()
+    {
+        if (firePoint == null) return;
+
+        Vector3 start = firePoint.position;
+        Vector3 end = start + (firePoint.forward * shootRange);
+
+        if (Physics.Raycast(start, firePoint.forward, out RaycastHit hit, shootRange))
+        {
+            if (!hit.collider.isTrigger)
+                end = hit.point;
+        }
+
+        CreateTrail(start, end);
+    }
+    protected void CreateTrail(Vector3 start, Vector3 end)
+    {
+        if (BulletTrailPool.Instance != null)
+        {
+            BulletTrail trail = BulletTrailPool.Instance.GetTrail();
+            if (trail != null)
+            {
+                trail.SetPositions(start, end);
+            }
+        }
+        else
+        {
+            Debug.LogWarning("¡Falta el BulletTrailPool en la escena! No se verán las balas.");
+        }
     }
 
     protected abstract void OnShootLogic(Transform origin, UDPClient client, string myKey);

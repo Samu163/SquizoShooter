@@ -295,6 +295,23 @@ public class PlayerController : MonoBehaviour
         if (playerVisuals != null) playerVisuals.SetEquippedWeapon(weaponID);
     }
 
+    public void PlayShootVisuals()
+    {
+        if (playerVisuals != null)
+        {
+            playerVisuals.PlayShootAnimation();
+        }
+
+        if (weaponManager != null)
+        {
+            BaseWeapon currentWeapon = weaponManager.GetCurrentWeapon();
+            if (currentWeapon != null)
+            {
+                currentWeapon.SimulateShootVisualsForNetwork();
+            }
+        }
+    }
+
     // Getters
     public CharacterController GetController() => controller;
     public LifeComponent GetLifeComponent() => lifeComponent;

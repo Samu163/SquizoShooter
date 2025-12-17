@@ -41,7 +41,8 @@ public class UDPServer : MonoBehaviour
         KillConfirmed = 10,
         Goodbye = 11,
         WeaponChange = 12,
-        WeaponStationData = 13 
+        WeaponStationData = 13,
+        WeaponStationRequest = 15
     }
 
     public void StartServer()
@@ -141,8 +142,12 @@ public class UDPServer : MonoBehaviour
                         HandleHealRequest(reader);
                         break;
 
-                    case MessageType.WeaponChange: 
-                        HandleWeaponRequest(reader);
+                    case MessageType.WeaponChange:
+                        HandleWeaponSwitchNotification(reader); 
+                        break;
+
+                    case MessageType.WeaponStationRequest:
+                        HandleWeaponStationRequest(reader);
                         break;
 
                     case MessageType.Goodbye:
@@ -161,6 +166,53 @@ public class UDPServer : MonoBehaviour
         }
     }
 
+    void HandleWeaponSwitchNotification(BinaryReader reader)
+    {
+        string senderKey = reader.ReadString();
+        int weaponID = reader.ReadInt32();
+
+        lock (clientsLock)
+        {
+            playerWeapons[senderKey] = weaponID;
+        }
+        BroadcastWeaponChange(senderKey, weaponID);
+    }
+
+    void HandleWeaponStationRequest(BinaryReader reader)
+    {
+        string senderKey = reader.ReadString();
+        int stationID = reader.ReadInt32();
+        int weaponID = reader.ReadInt32();
+
+        bool wasApproved = false;
+
+        lock (clientsLock)
+        {
+            if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
+            {
+                wasApproved = false;
+            }
+            else
+            {
+                Debug.Log($"[Server] WeaponStation {stationID} aprobada para {senderKey}. Arma: {weaponID}");
+                wasApproved = true;
+                healStationStates[stationID] = true; 
+                playerWeapons[senderKey] = weaponID; 
+            }
+        }
+
+        if (wasApproved)
+        {
+            // Importante: Decimos a TODOS (incluido el que lo pidió) que cambie de arma
+            BroadcastWeaponChange(senderKey, weaponID);
+            BroadcastWeaponStationState(stationID, 1);
+
+            Timer cooldownTimer = new Timer(
+                (state) => EndWeaponStationCooldown(stationID),
+                null, (int)(HEAL_STATION_COOLDOWN_TIME * 1000), Timeout.Infinite
+            );
+        }
+    }
     void HandleHandshake(EndPoint remote)
     {
         string newKey = Guid.NewGuid().ToString();

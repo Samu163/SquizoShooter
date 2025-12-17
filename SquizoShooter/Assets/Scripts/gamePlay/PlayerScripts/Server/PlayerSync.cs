@@ -82,11 +82,9 @@ public class PlayerSync : MonoBehaviour
 
     public void SendWeaponChange(int weaponID)
     {
-        if (udpClient != null && udpClient.IsConnected)
+        if (playerController.IsLocalPlayer && udpClient != null)
         {
-            const int ManualWeaponChangeStationID = 0;
-            udpClient.SendWeaponRequest(ManualWeaponChangeStationID, weaponID);
-            Debug.Log($"[WeaponManager] Solicitud de cambio a arma ID {weaponID} enviada al servidor.");
+            udpClient.SendWeaponChange(weaponID);
         }
     }
 
