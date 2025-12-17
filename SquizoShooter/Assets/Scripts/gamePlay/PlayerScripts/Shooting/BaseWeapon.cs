@@ -47,5 +47,9 @@ public abstract class BaseWeapon : MonoBehaviour
         {
             client.SendShotToServer(targetKey, damage);
         }
+        if (UiController.Instance != null)
+        {
+            UiController.Instance.ShowHitMarker();
+        }
     }
 }

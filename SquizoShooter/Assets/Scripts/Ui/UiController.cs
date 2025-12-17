@@ -6,12 +6,20 @@ using System.Text;
 
 public class UiController : MonoBehaviour
 {
+    public static UiController Instance { get; private set; }
+
+    
     [Header("UI References")]
     public GameObject pauseMenu;
     public GameObject deathPanel;
     public Button respawnButton;
     public Button quitButton;
     public TextMeshProUGUI notificationText;
+
+    [Header("Hitmarker")]
+    public GameObject hitMarkerImage; 
+    public float hitMarkerDuration = 0.1f;
+    private Coroutine hitMarkerCoroutine;
 
     [Header("Network Debug Panel")]
     public GameObject networkDebugPanel;
@@ -27,6 +35,19 @@ public class UiController : MonoBehaviour
     private Coroutine debugUpdateCoroutine;
 
     private PlayerController cachedLocalPlayer;
+
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
+    }
 
     void Start()
     {
@@ -48,6 +69,7 @@ public class UiController : MonoBehaviour
         {
             quitButton.onClick.AddListener(OnQuitClicked);
         }
+        if (hitMarkerImage != null) hitMarkerImage.SetActive(false);
 
         StartCoroutine(FindLocalPlayerDelayed());
     }
@@ -84,6 +106,32 @@ public class UiController : MonoBehaviour
         {
             ToggleNetworkDebugPanel();
         }
+    }
+
+    public void ShowHitMarker()
+    {
+        if (hitMarkerImage != null)
+        {
+          
+            if (hitMarkerCoroutine != null)
+            {
+                StopCoroutine(hitMarkerCoroutine);
+            }
+
+            hitMarkerImage.SetActive(true);
+            hitMarkerCoroutine = StartCoroutine(HideHitMarker());
+        }
+    }
+
+    private IEnumerator HideHitMarker()
+    {
+        yield return new WaitForSeconds(hitMarkerDuration);
+
+        if (hitMarkerImage != null)
+        {
+            hitMarkerImage.SetActive(false);
+        }
+        hitMarkerCoroutine = null;
     }
 
     private void TogglePauseMenu()
