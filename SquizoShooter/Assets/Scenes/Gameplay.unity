@@ -1312,6 +1312,7 @@ MonoBehaviour:
   shootRange: 100
   shootDamage: 25
   fireRate: 4
+  Ammo: 4
   recoilPitch: 5
   recoilYaw: 1
   recoilBack: 0.2
@@ -4002,6 +4003,18 @@ PrefabInstance:
     m_TransformParent: {fileID: 927075548}
     m_Modifications:
     - target: {fileID: 360136420873482388, guid: 905d38165b41e9a4ab278da2b558bcb9, type: 3}
+      propertyPath: m_Color.b
+      value: 0.4811321
+      objectReference: {fileID: 0}
+    - target: {fileID: 360136420873482388, guid: 905d38165b41e9a4ab278da2b558bcb9, type: 3}
+      propertyPath: m_Color.g
+      value: 0.4811321
+      objectReference: {fileID: 0}
+    - target: {fileID: 360136420873482388, guid: 905d38165b41e9a4ab278da2b558bcb9, type: 3}
+      propertyPath: m_Color.r
+      value: 0.4811321
+      objectReference: {fileID: 0}
+    - target: {fileID: 360136420873482388, guid: 905d38165b41e9a4ab278da2b558bcb9, type: 3}
       propertyPath: m_FillAmount
       value: 1
       objectReference: {fileID: 0}
@@ -5612,6 +5625,7 @@ MonoBehaviour:
   shootRange: 100
   shootDamage: 25
   fireRate: 4
+  Ammo: 4
   recoilPitch: 5
   recoilYaw: 1
   recoilBack: 0.2
