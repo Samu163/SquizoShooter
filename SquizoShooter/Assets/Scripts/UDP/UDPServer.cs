@@ -20,10 +20,20 @@ public class UDPServer : MonoBehaviour
     private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
     private readonly Dictionary<string, float> playerHealth = new Dictionary<string, float>();
-    private readonly Dictionary<string, int> playerWeapons = new Dictionary<string, int>(); 
+    private readonly Dictionary<string, int> playerWeapons = new Dictionary<string, int>();
+
+    private readonly Dictionary<string, string> playerNames = new Dictionary<string, string>();
+    private readonly Dictionary<string, bool> playerReadyStatus = new Dictionary<string, bool>();
+
+    private int maxRoundsToWin = 5;
+    private Dictionary<string, int> playerScores = new Dictionary<string, int>();
+    private bool isRoundEnding = false;
 
     private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>();
     private const float HEAL_STATION_COOLDOWN_TIME = 5.0f;
+
+    private bool isGameStarted = false;
+
 
     private readonly object clientsLock = new object();
 
@@ -42,7 +52,13 @@ public class UDPServer : MonoBehaviour
         Goodbye = 11,
         WeaponChange = 12,
         WeaponStationData = 13,
-        WeaponStationRequest = 15
+        WeaponStationRequest = 15,
+        LobbyData = 20, 
+        ClientReady = 21, 
+        StartGame = 22,
+        RoundWin = 30, 
+        MatchWin = 31,
+        RoundReset = 32
     }
 
     public void StartServer()
@@ -116,6 +132,9 @@ public class UDPServer : MonoBehaviour
                 {
                     case MessageType.Handshake:
                         HandleHandshake(remote);
+                        break;
+                    case MessageType.ClientReady: 
+                        HandleClientReady(reader); 
                         break;
 
                     case MessageType.PlayerData:
@@ -203,7 +222,6 @@ public class UDPServer : MonoBehaviour
 
         if (wasApproved)
         {
-            // Importante: Decimos a TODOS (incluido el que lo pidió) que cambie de arma
             BroadcastWeaponChange(senderKey, weaponID);
             BroadcastWeaponStationState(stationID, 1);
 
@@ -216,25 +234,92 @@ public class UDPServer : MonoBehaviour
     void HandleHandshake(EndPoint remote)
     {
         string newKey = Guid.NewGuid().ToString();
+        string randomName = NameGenerator.GetRandomName(); // Asignar nombre aleatorio
 
         lock (clientsLock)
         {
             connectedClients[newKey] = remote;
+
+            // Datos Iniciales Juego
             playerPositions[newKey] = Vector3.zero;
             playerHealth[newKey] = 100f;
-            playerWeapons[newKey] = 1; 
+            playerWeapons[newKey] = 1;
+
+            // Datos Iniciales Lobby
+            playerNames[newKey] = randomName;
+            playerReadyStatus[newKey] = false;
         }
 
-        Debug.Log($"[Server] HANDSHAKE de {remote}, asignada key: {newKey}");
+        Debug.Log($"[Server] HANDSHAKE de {randomName} ({newKey})");
 
         SendWelcome(newKey, remote);
+        BroadcastLobbyState();
         SendAllPlayerPositionsToSingleClient(newKey, remote);
         SendAllHealStationStatesToSingleClient(remote);
+    }
+    void HandleClientReady(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        bool isReady = reader.ReadBoolean();
 
-        BroadcastMove(newKey, Vector3.zero);
-        BroadcastPlayerHealth(newKey, 100f);
+        lock (clientsLock)
+        {
+            if (playerReadyStatus.ContainsKey(key))
+                playerReadyStatus[key] = isReady;
+        }
+        BroadcastLobbyState();
+    }
+    public void RequestStartGame(int rounds)
+    {
+        maxRoundsToWin = rounds;
+        isGameStarted = true; 
+
+        lock (clientsLock)
+        {
+            playerScores.Clear();
+            foreach (var key in connectedClients.Keys) playerScores[key] = 0;
+        }
+
+        BroadcastGameStart(rounds);
+    }
+    void BroadcastLobbyState()
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.LobbyData);
+
+            lock (clientsLock)
+            {
+                writer.Write(connectedClients.Count);
+                foreach (var key in connectedClients.Keys)
+                {
+                    writer.Write(key);
+                    writer.Write(playerNames.ContainsKey(key) ? playerNames[key] : "Unknown");
+                    writer.Write(playerReadyStatus.ContainsKey(key) ? playerReadyStatus[key] : false);
+                }
+            }
+
+            byte[] data = ms.ToArray();
+            List<EndPoint> snapshot;
+            lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
+            foreach (var ep in snapshot) SendBinaryToClient(data, ep);
+        }
     }
 
+    void BroadcastGameStart()
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.StartGame);
+            byte[] data = ms.ToArray();
+
+            List<EndPoint> snapshot;
+            lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
+            foreach (var ep in snapshot) SendBinaryToClient(data, ep);
+        }
+    }
     void HandlePlayerData(BinaryReader reader)
     {
         string senderKey = reader.ReadString();
@@ -295,6 +380,146 @@ public class UDPServer : MonoBehaviour
         if (wasKill)
         {
             SendKillConfirmation(shooterKey);
+            CheckRoundWinCondition();
+
+        }
+    }
+    void CheckRoundWinCondition()
+    {
+        if (!isGameStarted || isRoundEnding || connectedClients.Count < 2) return;
+
+        int aliveCount = 0;
+        string lastAliveKey = "";
+
+        lock (clientsLock)
+        {
+            foreach (var kvp in connectedClients)
+            {
+                if (playerHealth.ContainsKey(kvp.Key) && playerHealth[kvp.Key] > 0)
+                {
+                    aliveCount++;
+                    lastAliveKey = kvp.Key;
+                }
+            }
+        }
+
+        if (aliveCount <= 1)
+        {
+            StartRoundEndSequence(lastAliveKey);
+        }
+    }
+    void StartRoundEndSequence(string winnerKey)
+    {
+        isRoundEnding = true;
+
+        string winnerName = "Nadie";
+        bool matchWon = false;
+
+        lock (clientsLock)
+        {
+            if (!string.IsNullOrEmpty(winnerKey))
+            {
+                if (!playerScores.ContainsKey(winnerKey)) playerScores[winnerKey] = 0;
+                playerScores[winnerKey]++;
+
+                if (playerScores[winnerKey] >= maxRoundsToWin) matchWon = true;
+
+                if (playerNames.ContainsKey(winnerKey)) winnerName = playerNames[winnerKey];
+            }
+        }
+
+        if (matchWon)
+        {
+            Debug.Log($"[Server] Game Ended" +
+                $"Winner:" +
+                $" {winnerName}");
+            BroadcastMatchWin(winnerName);
+
+            // Esperar 5 segundos y volver al Lobby (reseteando el server)
+            new System.Threading.Timer(_ => ResetToLobby(), null, 5000, Timeout.Infinite);
+        }
+        else
+        {
+            Debug.Log($"[Server] Winner: {winnerName}");
+            BroadcastRoundWin(winnerKey, winnerName);
+
+            // Esperar 3 segundos y reiniciar ronda
+            new System.Threading.Timer(_ => ResetRound(), null, 3000, Timeout.Infinite);
+        }
+    }
+    void ResetRound()
+    {
+        lock (clientsLock)
+        {
+            List<string> keys = new List<string>(playerHealth.Keys);
+            foreach (var k in keys) playerHealth[k] = 100f;
+        }
+        isRoundEnding = false;
+        BroadcastRoundReset();
+    }
+
+    void ResetToLobby()
+    {
+        isGameStarted = false;
+        isRoundEnding = false;
+
+        lock (clientsLock)
+        {
+            List<string> keys = new List<string>(playerHealth.Keys);
+            foreach (var k in keys) playerHealth[k] = 100f;
+
+            List<string> rKeys = new List<string>(playerReadyStatus.Keys);
+            foreach (var k in rKeys) playerReadyStatus[k] = false;
+        }
+        BroadcastLobbyState();
+    }
+
+    void BroadcastGameStart(int maxRounds)
+    {
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
+        {
+            w.Write((byte)MessageType.StartGame);
+            w.Write(maxRounds); 
+            byte[] data = ms.ToArray();
+            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
+            foreach (var e in eps) SendBinaryToClient(data, e);
+        }
+    }
+
+    void BroadcastRoundWin(string winnerKey, string winnerName)
+    {
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
+        {
+            w.Write((byte)MessageType.RoundWin);
+            w.Write(winnerKey);
+            w.Write(winnerName);
+            byte[] data = ms.ToArray();
+            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
+            foreach (var e in eps) SendBinaryToClient(data, e);
+        }
+    }
+
+    void BroadcastMatchWin(string winnerName)
+    {
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
+        {
+            w.Write((byte)MessageType.MatchWin);
+            w.Write(winnerName);
+            byte[] data = ms.ToArray();
+            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
+            foreach (var e in eps) SendBinaryToClient(data, e);
+        }
+    }
+
+    void BroadcastRoundReset()
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(ms))
+        {
+            w.Write((byte)MessageType.RoundReset);
+            byte[] data = ms.ToArray();
+            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
+            foreach (var ep in eps) SendBinaryToClient(data, ep);
         }
     }
 
@@ -815,52 +1040,27 @@ public class UDPServer : MonoBehaviour
     {
         lock (clientsLock)
         {
-            if (connectedClients.ContainsKey(key))
-            {
-                connectedClients.Remove(key);
-            }
-            if (playerPositions.ContainsKey(key))
-            {
-                playerPositions.Remove(key);
-            }
-            if (playerHealth.ContainsKey(key))
-            {
-                playerHealth.Remove(key);
-            }
-            if (playerRotations.ContainsKey(key))
-            {
-                playerRotations.Remove(key);
-            }
-            if (playerWeapons.ContainsKey(key))
-            {
-                playerWeapons.Remove(key);
-            }
+            connectedClients.Remove(key);
+            playerPositions.Remove(key); playerHealth.Remove(key);
+            playerRotations.Remove(key); playerWeapons.Remove(key);
+
+            playerNames.Remove(key);
+            playerReadyStatus.Remove(key);
         }
 
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        BroadcastLobbyState();
+        CheckRoundWinCondition();
+
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
         {
-            writer.Write((byte)MessageType.Goodbye);
-            writer.Write(key);
-
+            writer.Write((byte)MessageType.Goodbye); writer.Write(key);
             byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock)
-            {
-                snapshot = new List<EndPoint>(connectedClients.Values);
-            }
-
-            foreach (var ep in snapshot)
-            {
-                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
-                catch { }
-            }
+            List<EndPoint> snapshot; lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
+            foreach (var ep in snapshot) try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); } catch { }
         }
-
         Debug.Log($"[Server] Cliente {key} desconectado");
+ 
     }
-
     public void StopServer()
     {
         isRunning = false;

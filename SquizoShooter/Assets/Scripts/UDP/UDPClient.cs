@@ -1,10 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class UDPClient : MonoBehaviour
 {
@@ -35,6 +37,18 @@ public class UDPClient : MonoBehaviour
     private Queue<Action> mainThreadActions = new Queue<Action>();
     private readonly object mainThreadLock = new object();
 
+    public struct LobbyPlayerInfo
+    {
+        public string Key;
+        public string Name;
+        public bool IsReady;
+    }
+
+    public List<LobbyPlayerInfo> CurrentLobbyPlayers { get; private set; } = new List<LobbyPlayerInfo>();
+
+    public event Action<List<LobbyPlayerInfo>> OnLobbyUpdated;
+    public event Action OnGameStarted;
+
     public bool IsConnected => isConnected;
     public string ClientKey => clientKey;
 
@@ -54,7 +68,14 @@ public class UDPClient : MonoBehaviour
         Goodbye = 11,
         WeaponChange = 12,
         WeaponStationData = 13,
-        WeaponStationRequest = 15
+        WeaponStationRequest = 15,
+        LobbyData = 20, 
+        ClientReady = 21, 
+        StartGame = 22,
+        RoundWin = 30, 
+        MatchWin = 31, 
+        RoundReset = 32
+
     }
 
     public void StartConnection()
@@ -142,7 +163,13 @@ public class UDPClient : MonoBehaviour
                     case MessageType.Welcome:
                         HandleWelcome(reader);
                         break;
-
+                    case MessageType.LobbyData: 
+                        HandleLobbyData(reader); 
+                        break;
+                    case MessageType.StartGame: HandleStartGame(reader); break;
+                    case MessageType.RoundWin: HandleRoundWin(reader); break;
+                    case MessageType.MatchWin: HandleMatchWin(reader); break;
+                    case MessageType.RoundReset: HandleRoundReset(reader); break;
                     case MessageType.PlayerData:
                         HandlePlayerData(reader);
                         break;
@@ -178,6 +205,7 @@ public class UDPClient : MonoBehaviour
                     case MessageType.Goodbye:
                         HandleGoodbye(reader);
                         break;
+                        break;
 
                     default:
                         Debug.LogWarning($"[Client] Tipo de mensaje desconocido: {msgType}");
@@ -194,8 +222,154 @@ public class UDPClient : MonoBehaviour
     void HandleWelcome(BinaryReader reader)
     {
         clientKey = reader.ReadString();
-        Debug.Log("Received client key: " + clientKey);
+        isConnected = true;
+        Debug.Log("Conectado al Lobby. Key: " + clientKey);
 
+        //Vector3 spawnPos = (GameplayManager.Instance != null)
+        //        ? GameplayManager.Instance.GetRandomSpawnPosition()
+        //        : Vector3.zero;
+
+        //GameObject myCube = Instantiate(cubePrefab, spawnPos, Quaternion.identity);
+
+        //lock (cubesLock)
+        //{
+        //    playerCubes[clientKey] = myCube;
+        //}
+
+        //PlayerController player = myCube.GetComponent<PlayerController>();
+        //if (player != null)
+        //{
+        //    player.SetAsLocalPlayer(true);
+        //    player.enabled = true;
+        //    foreach (var item in AllItems)
+        //    {
+        //        item.AssignCamera(player.GetPlayerCamera().playerCamera);
+        //    }
+        //}
+
+        //if (uiController != null)
+        //    uiController.ShowNotification("You joined the game!", Color.green);
+
+        //SendCubeMovement(spawnPos);
+    }
+    void HandleLobbyData(BinaryReader reader)
+    {
+        int count = reader.ReadInt32();
+        List<LobbyPlayerInfo> players = new List<LobbyPlayerInfo>();
+
+        for (int i = 0; i < count; i++)
+        {
+            players.Add(new LobbyPlayerInfo
+            {
+                Key = reader.ReadString(),
+                Name = reader.ReadString(),
+                IsReady = reader.ReadBoolean()
+            });
+        }
+
+        CurrentLobbyPlayers = players;
+        OnLobbyUpdated?.Invoke(players);
+    }
+    void HandleStartGame(BinaryReader reader)
+    {
+        int maxRounds = reader.ReadInt32(); // Leemos configuración
+
+        SafeEnqueueMain(() => {
+            if (RoundScoreUI.Instance != null)
+                RoundScoreUI.Instance.Configure(maxRounds);
+
+            OnGameStarted?.Invoke();
+        });
+    }
+
+    void HandleRoundWin(BinaryReader reader)
+    {
+        string winnerKey = reader.ReadString();
+        string winnerName = reader.ReadString();
+
+        SafeEnqueueMain(() => {
+            // Si soy el ganador, subo mi slider
+            if (winnerKey == clientKey && RoundScoreUI.Instance != null)
+            {
+                RoundScoreUI.Instance.AddWin();
+            }
+
+            // Mostrar mensaje a todos
+            if (RoundScoreUI.Instance != null)
+                RoundScoreUI.Instance.ShowRoundWinner(winnerName, false);
+        });
+    }
+
+    void HandleMatchWin(BinaryReader reader)
+    {
+        string winnerName = reader.ReadString();
+
+        SafeEnqueueMain(() => {
+            if (RoundScoreUI.Instance != null)
+                RoundScoreUI.Instance.ShowRoundWinner(winnerName, true); // true = Mensaje de Partida
+
+            StartCoroutine(ReturnToMainMenuRoutine());
+        });
+    }
+    IEnumerator ReturnToMainMenuRoutine()
+    {
+        yield return new WaitForSeconds(5.0f);
+        Debug.Log("[Client] Partida terminada. Volviendo al menú principal...");
+        Disconnect();
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        SceneManager.LoadScene("MainMenu");
+    }
+    System.Collections.IEnumerator ReturnToLobbyRoutine()
+    {
+        yield return new WaitForSeconds(5.0f);
+
+        lock (cubesLock)
+        {
+            foreach (var c in playerCubes.Values)
+            {
+                if (c != null) Destroy(c);
+            }
+            playerCubes.Clear();
+        }
+
+        if (RoundScoreUI.Instance != null)
+            RoundScoreUI.Instance.ResetScore();
+
+        if (uiController != null)
+        {
+            uiController.HideDeathScreen(); 
+        }
+
+        if (uiController != null)
+            uiController.EnterLobbyMode();
+
+        Debug.Log("[Client] Regresado al Lobby.");
+    }
+
+    void HandleRoundReset(BinaryReader reader)
+    {
+        SafeEnqueueMain(() => {
+            if (RoundScoreUI.Instance) RoundScoreUI.Instance.HideRoundMessage();
+            if (uiController) uiController.HideDeathScreen();
+
+            // Respawnear jugador local
+            lock (cubesLock)
+            {
+                if (playerCubes.TryGetValue(clientKey, out GameObject myCube))
+                {
+                    PlayerController pc = myCube.GetComponent<PlayerController>();
+                    if (pc)
+                    {
+                        pc.Respawn();
+                        pc.SetAsLocalPlayer(true); // Re-activar control
+                    }
+                }
+            }
+        });
+    }
+    public void SpawnMyPlayerNow()
+    {
         Vector3 spawnPos = (GameplayManager.Instance != null)
                 ? GameplayManager.Instance.GetRandomSpawnPosition()
                 : Vector3.zero;
@@ -212,16 +386,21 @@ public class UDPClient : MonoBehaviour
         {
             player.SetAsLocalPlayer(true);
             player.enabled = true;
-            foreach (var item in AllItems)
-            {
-                item.AssignCamera(player.GetPlayerCamera().playerCamera);
-            }
+            foreach (var item in AllItems) item.AssignCamera(player.GetPlayerCamera().playerCamera);
         }
-
-        if (uiController != null)
-            uiController.ShowNotification("You joined the game!", Color.green);
-
         SendCubeMovement(spawnPos);
+    }
+    public void SendReadyState(bool ready)
+    {
+        if (!isConnected) return;
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.ClientReady);
+            writer.Write(clientKey);
+            writer.Write(ready);
+            SendBinary(ms.ToArray());
+        }
     }
 
     void HandleShootAnim(BinaryReader reader)

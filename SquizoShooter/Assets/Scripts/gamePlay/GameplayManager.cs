@@ -14,7 +14,6 @@ public class GameplayManager : MonoBehaviour
     [Header("References")]
     public GameObject udpServerObject;
     public GameObject udpClientObject;
-    public GameObject playerPrefab;
     public UiController uiController;
 
     [Header("Spawn Configuration")]

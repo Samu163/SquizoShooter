@@ -35,6 +35,6 @@ public class GameManager : MonoBehaviour
     private void SetWindowMode()
     {
         Screen.fullScreen = false;
-        Screen.SetResolution(1920, 1080, false);  
+        Screen.SetResolution(1080, 640, false);  
     }
 }

@@ -7,11 +7,9 @@ using System.Text;
 public class UiController : MonoBehaviour
 {
     public static UiController Instance { get; private set; }
-
     
     [Header("UI References")]
     public GameObject pauseMenu;
-    public GameObject deathPanel;
     public Button respawnButton;
     public Button quitButton;
     public TextMeshProUGUI notificationText;
@@ -28,6 +26,13 @@ public class UiController : MonoBehaviour
 
     [Header("Notification Settings")]
     public float notificationDuration = 3f;
+
+    [Header("Lobby & Game HUD")]
+    public LobbyUiController lobbyController;
+    public GameObject gameHUD;
+
+    [Header("Spectator")]
+    public GameObject spectatorObject;
 
     private bool isPaused = false;
     private bool isDebugPanelVisible = false;
@@ -54,9 +59,6 @@ public class UiController : MonoBehaviour
         if (pauseMenu != null)
             pauseMenu.SetActive(false);
 
-        if (deathPanel != null)
-            deathPanel.SetActive(false);
-
         if (networkDebugPanel != null)
             networkDebugPanel.SetActive(false);
 
@@ -70,8 +72,30 @@ public class UiController : MonoBehaviour
             quitButton.onClick.AddListener(OnQuitClicked);
         }
         if (hitMarkerImage != null) hitMarkerImage.SetActive(false);
+        if (gameHUD != null) gameHUD.SetActive(false);
+        if (lobbyController != null) lobbyController.gameObject.SetActive(true);
 
         StartCoroutine(FindLocalPlayerDelayed());
+    }
+
+    public void EnterLobbyMode()
+    {
+        Time.timeScale = 1f;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        if (gameHUD != null) gameHUD.SetActive(false);
+        if (lobbyController != null) lobbyController.gameObject.SetActive(true);
+        if (lobbyController != null) lobbyController.Init();
+    }
+
+    public void EnableGameHUD()
+    {
+        if (lobbyController != null) lobbyController.gameObject.SetActive(false);
+        if (gameHUD != null) gameHUD.SetActive(true);
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
     private IEnumerator FindLocalPlayerDelayed()
@@ -323,34 +347,19 @@ public class UiController : MonoBehaviour
     }
 
     // ===== DEATH SYSTEM =====
-
     public void ShowDeathScreen()
     {
-        if (deathPanel != null)
+        if (spectatorObject != null)
         {
-            deathPanel.SetActive(true);
-
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-
-            Debug.Log("[UiController] Death screen shown");
-        }
-        else
-        {
-            Debug.LogError("[UiController] deathPanel no está asignado!");
+            spectatorObject.SetActive(true);
         }
     }
 
     public void HideDeathScreen()
-    {
-        if (deathPanel != null)
+    {   
+        if (spectatorObject != null)
         {
-            deathPanel.SetActive(false);
-
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-
-            Debug.Log("[UiController] Death screen hidden");
+            spectatorObject.SetActive(false);
         }
     }
 
