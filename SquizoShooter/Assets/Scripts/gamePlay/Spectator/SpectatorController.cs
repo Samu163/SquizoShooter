@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
 
 public class SpectatorController : MonoBehaviour
 {
@@ -13,23 +14,22 @@ public class SpectatorController : MonoBehaviour
     private List<GameObject> playersCache = new List<GameObject>();
     private int currentTargetIndex = 0;
     private Camera specCamera;
+    private UDPClient udpClient;
 
     void Awake()
     {
         specCamera = GetComponentInChildren<Camera>();
         if (specCamera == null) specCamera = GetComponent<Camera>();
+        udpClient = FindObjectOfType<UDPClient>();
     }
 
     void OnEnable()
     {
-        FindNewTarget();
+        FindNewTarget();  
     }
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0)) SwitchTarget(1);
-        if (Input.GetMouseButtonDown(1)) SwitchTarget(-1);
-
         if (target == null || !target.gameObject.activeInHierarchy)
         {
             FindNewTarget();

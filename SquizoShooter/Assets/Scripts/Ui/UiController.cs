@@ -30,9 +30,11 @@ public class UiController : MonoBehaviour
     [Header("Lobby & Game HUD")]
     public LobbyUiController lobbyController;
     public GameObject gameHUD;
+    public GameObject lobbyCamera;
 
     [Header("Spectator")]
     public GameObject spectatorObject;
+    public GameObject spectatorCamera;
 
     private bool isPaused = false;
     private bool isDebugPanelVisible = false;
@@ -40,6 +42,8 @@ public class UiController : MonoBehaviour
     private Coroutine debugUpdateCoroutine;
 
     private PlayerController cachedLocalPlayer;
+
+     
 
     void Awake()
     {
@@ -56,6 +60,8 @@ public class UiController : MonoBehaviour
 
     void Start()
     {
+        if (lobbyCamera) lobbyCamera.SetActive(true);      
+        if (spectatorCamera) spectatorCamera.SetActive(false);
         if (pauseMenu != null)
             pauseMenu.SetActive(false);
 
@@ -84,6 +90,9 @@ public class UiController : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
+        if (spectatorCamera) spectatorCamera.SetActive(false);
+        if (lobbyCamera) lobbyCamera.SetActive(true);
+
         if (gameHUD != null) gameHUD.SetActive(false);
         if (lobbyController != null) lobbyController.gameObject.SetActive(true);
         if (lobbyController != null) lobbyController.Init();
@@ -92,7 +101,25 @@ public class UiController : MonoBehaviour
     public void EnableGameHUD()
     {
         if (lobbyController != null) lobbyController.gameObject.SetActive(false);
+        if (lobbyCamera != null) lobbyCamera.SetActive(false);
+
+        if (spectatorCamera != null) spectatorCamera.SetActive(true);
+
         if (gameHUD != null) gameHUD.SetActive(true);
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+
+        ShowNotification("FIGHT!", Color.red);
+    }
+    public void EnableSpectatorMode()
+    {
+        if (lobbyController != null) lobbyController.gameObject.SetActive(false);
+        if (lobbyCamera != null) lobbyCamera.SetActive(false);
+
+        if (gameHUD != null) gameHUD.SetActive(true);
+
+        if (spectatorCamera != null) spectatorCamera.SetActive(true);
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;

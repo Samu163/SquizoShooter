@@ -6,7 +6,6 @@ using System.Threading;
 using System;
 using System.Collections.Generic;
 
-
 public class GameplayManager : MonoBehaviour
 {
     public static GameplayManager Instance;
@@ -14,11 +13,11 @@ public class GameplayManager : MonoBehaviour
     [Header("References")]
     public GameObject udpServerObject;
     public GameObject udpClientObject;
+    public GameObject playerPrefab;
     public UiController uiController;
 
     [Header("Spawn Configuration")]
     public Transform[] spawnPoints;
-    
 
     [Header("Server Settings")]
     public int baseServerPort = 9050;
@@ -64,8 +63,8 @@ public class GameplayManager : MonoBehaviour
         }
     }
 
-    //Gameplay Methods
-    public Vector3 GetRandomSpawnPosition()
+    // --- GAMEPLAY METHODS ---.
+    public Vector3 GetSpawnPosition(int index)
     {
         if (spawnPoints == null || spawnPoints.Length == 0)
         {
@@ -73,11 +72,10 @@ public class GameplayManager : MonoBehaviour
             return Vector3.zero;
         }
 
-        int randomIndex = UnityEngine.Random.Range(0, spawnPoints.Length);
-        return spawnPoints[randomIndex].position;
+        int safeIndex = index % spawnPoints.Length;
+
+        return spawnPoints[safeIndex].position;
     }
-
-
 
     //--Init network settings--//
 
@@ -113,22 +111,12 @@ public class GameplayManager : MonoBehaviour
         udpClientObject.SetActive(true);
         udpClient.StartConnection();
 
-        // Show connected status
-        //if (uiController != null)
-        //    uiController.ShowConnectedStatus();
-
         Debug.Log($"[GameplayManager] Host connected to own server");
-        Debug.Log("========================================");
-        Debug.Log($"SERVER INFO - Share with other players:");
-        Debug.Log($"IP: {localIP}");
-        Debug.Log($"Port: {assignedPort}");
-        Debug.Log("========================================");
     }
 
     private void JoinGame()
     {
         Debug.Log("[GameplayManager] Starting CLIENT mode - Searching for servers...");
-
         // Start listening for server broadcasts
         serverDiscovery.StartListening();
     }
@@ -141,30 +129,16 @@ public class GameplayManager : MonoBehaviour
         udpClient.serverPort = serverPort;
         udpClientObject.SetActive(true);
         udpClient.StartConnection();
-
-        // Show connected status
-        //if (uiController != null)
-        //    uiController.ShowConnectedStatus();
     }
 
     public void Disconnect()
     {
         // Stop discovery
-        if (serverDiscovery != null)
-        {
-            serverDiscovery.Stop();
-        }
+        if (serverDiscovery != null) serverDiscovery.Stop();
 
         // Disconnect client/server
-        if (udpClient != null && udpClient.IsConnected)
-        {
-            udpClient.Disconnect();
-        }
-
-        if (udpServer != null)
-        {
-            udpServer.StopServer();
-        }
+        if (udpClient != null && udpClient.IsConnected) udpClient.Disconnect();
+        if (udpServer != null) udpServer.StopServer();
     }
 
     private void OnDestroy()

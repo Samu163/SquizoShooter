@@ -3,7 +3,6 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 public class LobbyUiController : MonoBehaviour
 {
@@ -13,8 +12,8 @@ public class LobbyUiController : MonoBehaviour
     public GameObject playerListPrefab;
 
     [Header("Rounds Settings")]
-    public Slider roundsSlider;         
-    public TextMeshProUGUI roundsValueText; 
+    public Slider roundsSlider;
+    public TextMeshProUGUI roundsValueText;
 
     [Header("Buttons")]
     public Button readyButton;
@@ -39,30 +38,59 @@ public class LobbyUiController : MonoBehaviour
 
     public void Init()
     {
-        bool isHost = GameManager.Instance.GetGameMode() == GameManager.GameMode.Server;
-        startButton.gameObject.SetActive(isHost);
-        startButton.interactable = false;
-        readyButton.gameObject.SetActive(!isHost);
+        if (client == null) client = FindObjectOfType<UDPClient>();
+
+        bool isHost = false;
+        if (GameManager.Instance != null)
+            isHost = GameManager.Instance.GetGameMode() == GameManager.GameMode.Server;
+
+        if (startButton)
+        {
+            startButton.gameObject.SetActive(isHost);
+            startButton.interactable = false;
+            startButton.onClick.RemoveAllListeners();
+            startButton.onClick.AddListener(OnStartClicked);
+        }
+
+        if (readyButton)
+        {
+            readyButton.gameObject.SetActive(!isHost);
+            readyButton.onClick.RemoveAllListeners();
+            readyButton.onClick.AddListener(OnReadyClicked);
+
+            isLocalReady = false;
+            UpdateReadyButtonVisuals();
+        }
+
+        if (exitButton)
+        {
+            exitButton.onClick.RemoveAllListeners();
+            exitButton.onClick.AddListener(OnExitClicked);
+        }
 
         if (roundsSlider != null)
         {
-            if(!isHost)
+            roundsSlider.onValueChanged.RemoveAllListeners(); 
+
+            if (!isHost)
             {
                 roundsSlider.gameObject.SetActive(false);
-                roundsValueText.gameObject.SetActive(false);
+                if (roundsValueText) roundsValueText.gameObject.SetActive(false);
             }
             else
             {
-                roundsSlider.interactable = isHost;
+                roundsSlider.gameObject.SetActive(true);
+                if (roundsValueText) roundsValueText.gameObject.SetActive(true);
+
+                roundsSlider.interactable = true;
                 roundsSlider.minValue = 1;
                 roundsSlider.maxValue = 10;
                 roundsSlider.wholeNumbers = true;
                 roundsSlider.value = 5;
 
                 roundsSlider.onValueChanged.AddListener(UpdateRoundsText);
-
                 UpdateRoundsText(roundsSlider.value);
-            } 
+            }
         }
         else
         {
@@ -71,7 +99,10 @@ public class LobbyUiController : MonoBehaviour
 
         if (client != null)
         {
+            client.OnLobbyUpdated -= UpdateLobbyUI; 
             client.OnLobbyUpdated += UpdateLobbyUI;
+
+            client.OnGameStarted -= StartCountdownSequence;
             client.OnGameStarted += StartCountdownSequence;
 
             if (client.CurrentLobbyPlayers != null && client.CurrentLobbyPlayers.Count > 0)
@@ -80,26 +111,25 @@ public class LobbyUiController : MonoBehaviour
             }
         }
 
-        readyButton.onClick.AddListener(OnReadyClicked);
-        startButton.onClick.AddListener(OnStartClicked);
-        exitButton.onClick.AddListener(OnExitClicked);
-
         lobbyPanel.SetActive(true);
         if (countdownText != null) countdownText.gameObject.SetActive(false);
     }
 
     void UpdateRoundsText(float value)
     {
-        if (roundsValueText != null)
-        {
-            roundsValueText.text = $"{value}";
-        }
+        if (roundsValueText != null) roundsValueText.text = $"{value}";
     }
 
     void OnReadyClicked()
     {
         isLocalReady = !isLocalReady;
-        client.SendReadyState(isLocalReady);
+        if (client) client.SendReadyState(isLocalReady);
+        UpdateReadyButtonVisuals();
+    }
+
+    void UpdateReadyButtonVisuals()
+    {
+        if (readyButton == null) return;
         var btnText = readyButton.GetComponentInChildren<TextMeshProUGUI>();
         if (btnText != null) btnText.text = isLocalReady ? "CANCEL READY" : "READY";
         readyButton.image.color = isLocalReady ? Color.green : Color.white;
@@ -110,14 +140,8 @@ public class LobbyUiController : MonoBehaviour
         var server = FindObjectOfType<UDPServer>();
         if (server != null)
         {
-            // Leer el valor del Slider
             int rounds = 5;
-            if (roundsSlider != null)
-            {
-                rounds = (int)roundsSlider.value;
-            }
-
-            // Iniciar juego con esas rondas
+            if (roundsSlider != null) rounds = (int)roundsSlider.value;
             server.RequestStartGame(rounds);
         }
     }
@@ -144,7 +168,7 @@ public class LobbyUiController : MonoBehaviour
             string status = p.IsReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";
             txt.text = $"{p.Name} - {status}";
 
-            if (p.Key == client.ClientKey)
+            if (client != null && p.Key == client.ClientKey)
             {
                 txt.color = localPlayerHighlightColor;
                 txt.fontStyle = FontStyles.Bold;
@@ -154,10 +178,13 @@ public class LobbyUiController : MonoBehaviour
             if (!p.IsReady) allReady = false;
         }
 
-        if (startButton.gameObject.activeSelf)
+        if (startButton != null && startButton.gameObject.activeSelf)
         {
             bool clientsReady = true;
-            foreach (var p in players) if (p.Key != client.ClientKey && !p.IsReady) clientsReady = false;
+            if (client != null)
+            {
+                foreach (var p in players) if (p.Key != client.ClientKey && !p.IsReady) clientsReady = false;
+            }
             startButton.interactable = clientsReady && players.Count > 0;
         }
     }
@@ -167,15 +194,28 @@ public class LobbyUiController : MonoBehaviour
     IEnumerator CountdownCoroutine()
     {
         lobbyPanel.SetActive(false);
-        if (countdownText) { countdownText.gameObject.SetActive(true); countdownText.text = "3"; yield return new WaitForSeconds(1); countdownText.text = "2"; yield return new WaitForSeconds(1); countdownText.text = "1"; yield return new WaitForSeconds(1); countdownText.text = "GO!"; }
+        if (countdownText)
+        {
+            countdownText.gameObject.SetActive(true);
+            countdownText.text = "3"; yield return new WaitForSeconds(1);
+            countdownText.text = "2"; yield return new WaitForSeconds(1);
+            countdownText.text = "1"; yield return new WaitForSeconds(1);
+            countdownText.text = "GO!";
+        }
+
         if (client) client.SpawnMyPlayerNow();
         yield return new WaitForSeconds(0.5f);
+
         if (countdownText) countdownText.gameObject.SetActive(false);
         if (UiController.Instance) UiController.Instance.EnableGameHUD();
     }
 
     void OnDestroy()
     {
-        if (client) { client.OnLobbyUpdated -= UpdateLobbyUI; client.OnGameStarted -= StartCountdownSequence; }
+        if (client)
+        {
+            client.OnLobbyUpdated -= UpdateLobbyUI;
+            client.OnGameStarted -= StartCountdownSequence;
+        }
     }
 }

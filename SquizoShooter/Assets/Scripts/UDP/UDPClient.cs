@@ -29,6 +29,10 @@ public class UDPClient : MonoBehaviour
     private readonly object cubesLock = new object();
     private Dictionary<string, GameObject> playerCubes = new Dictionary<string, GameObject>();
     public List<LookAtPlayer> AllItems = new List<LookAtPlayer>();
+
+    private List<PlayerNameTag> activeNameTags = new List<PlayerNameTag>();
+    private Camera currentActiveCamera;
+
     private Dictionary<int, HealStation> healStations = new Dictionary<int, HealStation>();
     private readonly object healStationsLock = new object();
     private Dictionary<int, WeaponStation> weaponStations = new Dictionary<int, WeaponStation>();
@@ -37,6 +41,9 @@ public class UDPClient : MonoBehaviour
     private Queue<Action> mainThreadActions = new Queue<Action>();
     private readonly object mainThreadLock = new object();
 
+    public int MySpawnIndex => mySpawnIndex;
+    private int mySpawnIndex = 0;
+    public int CurrentRoundOffset { get; private set; } = 0;
     public struct LobbyPlayerInfo
     {
         public string Key;
@@ -166,10 +173,18 @@ public class UDPClient : MonoBehaviour
                     case MessageType.LobbyData: 
                         HandleLobbyData(reader); 
                         break;
-                    case MessageType.StartGame: HandleStartGame(reader); break;
-                    case MessageType.RoundWin: HandleRoundWin(reader); break;
-                    case MessageType.MatchWin: HandleMatchWin(reader); break;
-                    case MessageType.RoundReset: HandleRoundReset(reader); break;
+                    case MessageType.StartGame: 
+                        HandleStartGame(reader); 
+                        break;
+                    case MessageType.RoundWin: 
+                        HandleRoundWin(reader); 
+                        break;
+                    case MessageType.MatchWin: 
+                        HandleMatchWin(reader); 
+                        break;
+                    case MessageType.RoundReset: 
+                        HandleRoundReset(reader); 
+                        break;
                     case MessageType.PlayerData:
                         HandlePlayerData(reader);
                         break;
@@ -205,7 +220,6 @@ public class UDPClient : MonoBehaviour
                     case MessageType.Goodbye:
                         HandleGoodbye(reader);
                         break;
-                        break;
 
                     default:
                         Debug.LogWarning($"[Client] Tipo de mensaje desconocido: {msgType}");
@@ -222,35 +236,101 @@ public class UDPClient : MonoBehaviour
     void HandleWelcome(BinaryReader reader)
     {
         clientKey = reader.ReadString();
+        bool gameInProgress = reader.ReadBoolean();
+        mySpawnIndex = reader.ReadInt32();
+        bool shouldSpectate = reader.ReadBoolean(); 
+
         isConnected = true;
-        Debug.Log("Conectado al Lobby. Key: " + clientKey);
+        Debug.Log($"Conectado. Key: {clientKey}. Index: {mySpawnIndex}. Spectate: {shouldSpectate}");
 
-        //Vector3 spawnPos = (GameplayManager.Instance != null)
-        //        ? GameplayManager.Instance.GetRandomSpawnPosition()
-        //        : Vector3.zero;
+        SafeEnqueueMain(() =>
+        {
+            if (gameInProgress)
+            {
+                if (shouldSpectate)
+                {
+                    Debug.Log("[Client] Uniéndose tarde a partida llena -> ESPECTADOR.");
+                    if (uiController != null)
+                    {
+                        uiController.EnableSpectatorMode();
+                        uiController.ShowNotification("ESPERANDO SIGUIENTE RONDA...", Color.yellow);
+                    }
+                }
+                else
+                {
+                    Debug.Log("[Client] Uniéndose a Host solitario -> A JUGAR.");
+                    if (uiController != null) uiController.EnableGameHUD();
+                    SpawnMyPlayerNow();
+                }
+            }
+            else
+            {
+                if (uiController != null) uiController.EnterLobbyMode();
+            }
+        });
+    }
 
-        //GameObject myCube = Instantiate(cubePrefab, spawnPos, Quaternion.identity);
+    public void SpawnMyPlayerNow()
+    {
+        Vector3 spawnPos = Vector3.zero;
+        if (GameplayManager.Instance != null)
+        {
+            int finalIndex = mySpawnIndex + CurrentRoundOffset;
+            spawnPos = GameplayManager.Instance.GetSpawnPosition(finalIndex);
+        }
+        GameObject myCube = Instantiate(cubePrefab, spawnPos, Quaternion.identity);
 
-        //lock (cubesLock)
-        //{
-        //    playerCubes[clientKey] = myCube;
-        //}
+        PlayerNameTag nameTag = myCube.GetComponentInChildren<PlayerNameTag>();
+        if (nameTag != null)
+        {
+            string myName = "";
+            foreach (var p in CurrentLobbyPlayers) if (p.Key == clientKey) myName = p.Name;
+            nameTag.SetText(myName, Color.green);
+        }
+        lock (cubesLock)
+        {
+            playerCubes[clientKey] = myCube;
+        }
 
-        //PlayerController player = myCube.GetComponent<PlayerController>();
-        //if (player != null)
-        //{
-        //    player.SetAsLocalPlayer(true);
-        //    player.enabled = true;
-        //    foreach (var item in AllItems)
-        //    {
-        //        item.AssignCamera(player.GetPlayerCamera().playerCamera);
-        //    }
-        //}
+        PlayerController player = myCube.GetComponent<PlayerController>();
+        if (player != null)
+        {
+            player.SetAsLocalPlayer(true);
+            player.enabled = true;
+            foreach (var item in AllItems) item.AssignCamera(player.GetPlayerCamera().playerCamera);
+        }
+        SendCubeMovement(spawnPos);
+    }
 
-        //if (uiController != null)
-        //    uiController.ShowNotification("You joined the game!", Color.green);
+    void HandleRoundReset(BinaryReader reader)
+    {
+        int offset = reader.ReadInt32(); 
 
-        //SendCubeMovement(spawnPos);
+        SafeEnqueueMain(() => {
+            CurrentRoundOffset = offset; 
+
+            if (RoundScoreUI.Instance) RoundScoreUI.Instance.HideRoundMessage();
+            if (uiController) uiController.HideDeathScreen();
+
+            lock (cubesLock)
+            {
+                if (playerCubes.TryGetValue(clientKey, out GameObject myCube))
+                {
+                    PlayerController pc = myCube.GetComponent<PlayerController>();
+                    if (pc)
+                    {
+                        pc.Respawn(); 
+                        pc.SetAsLocalPlayer(true);
+                        if (uiController) uiController.EnableGameHUD();
+                    }
+                }
+                else
+                {
+                    SpawnMyPlayerNow(); 
+                    if (uiController) uiController.EnableGameHUD();
+                }
+            }
+        });
     }
     void HandleLobbyData(BinaryReader reader)
     {
@@ -272,9 +352,12 @@ public class UDPClient : MonoBehaviour
     }
     void HandleStartGame(BinaryReader reader)
     {
-        int maxRounds = reader.ReadInt32(); // Leemos configuración
+        int maxRounds = reader.ReadInt32();
+        int offset = reader.ReadInt32(); 
 
         SafeEnqueueMain(() => {
+            CurrentRoundOffset = offset;
+
             if (RoundScoreUI.Instance != null)
                 RoundScoreUI.Instance.Configure(maxRounds);
 
@@ -346,50 +429,6 @@ public class UDPClient : MonoBehaviour
 
         Debug.Log("[Client] Regresado al Lobby.");
     }
-
-    void HandleRoundReset(BinaryReader reader)
-    {
-        SafeEnqueueMain(() => {
-            if (RoundScoreUI.Instance) RoundScoreUI.Instance.HideRoundMessage();
-            if (uiController) uiController.HideDeathScreen();
-
-            // Respawnear jugador local
-            lock (cubesLock)
-            {
-                if (playerCubes.TryGetValue(clientKey, out GameObject myCube))
-                {
-                    PlayerController pc = myCube.GetComponent<PlayerController>();
-                    if (pc)
-                    {
-                        pc.Respawn();
-                        pc.SetAsLocalPlayer(true); // Re-activar control
-                    }
-                }
-            }
-        });
-    }
-    public void SpawnMyPlayerNow()
-    {
-        Vector3 spawnPos = (GameplayManager.Instance != null)
-                ? GameplayManager.Instance.GetRandomSpawnPosition()
-                : Vector3.zero;
-
-        GameObject myCube = Instantiate(cubePrefab, spawnPos, Quaternion.identity);
-
-        lock (cubesLock)
-        {
-            playerCubes[clientKey] = myCube;
-        }
-
-        PlayerController player = myCube.GetComponent<PlayerController>();
-        if (player != null)
-        {
-            player.SetAsLocalPlayer(true);
-            player.enabled = true;
-            foreach (var item in AllItems) item.AssignCamera(player.GetPlayerCamera().playerCamera);
-        }
-        SendCubeMovement(spawnPos);
-    }
     public void SendReadyState(bool ready)
     {
         if (!isConnected) return;
@@ -401,6 +440,18 @@ public class UDPClient : MonoBehaviour
             writer.Write(ready);
             SendBinary(ms.ToArray());
         }
+    }
+
+    string GetNameByKey(string key)
+    {
+        if (CurrentLobbyPlayers != null)
+        {
+            foreach (var p in CurrentLobbyPlayers)
+            {
+                if (p.Key == key) return p.Name;
+            }
+        }
+        return "Unknown";
     }
 
     void HandleShootAnim(BinaryReader reader)
@@ -641,6 +692,14 @@ public class UDPClient : MonoBehaviour
     {
         GameObject newCube = Instantiate(cubePrefab, position, Quaternion.identity);
 
+        PlayerNameTag nameTag = newCube.GetComponentInChildren<PlayerNameTag>();
+        if (nameTag != null)
+        {
+            string remoteName = "Enemy";
+            foreach (var p in CurrentLobbyPlayers) if (p.Key == key) remoteName = p.Name;
+            nameTag.SetText(remoteName, Color.white);
+        }
+
         PlayerController movementScript = newCube.GetComponent<PlayerController>();
         if (movementScript != null)
         {
@@ -654,7 +713,7 @@ public class UDPClient : MonoBehaviour
             playerCubes[key] = newCube;
         }
 
-        Debug.Log($"[Client] Cubo remoto creado para {key} en {position}");
+        Debug.Log($"[Client] Cubo remoto creado para {key} ({GetNameByKey(key)})");
     }
 
     void RemoveCube(string key)
@@ -663,6 +722,9 @@ public class UDPClient : MonoBehaviour
         {
             if (playerCubes.TryGetValue(key, out GameObject go))
             {
+                PlayerNameTag tag = go.GetComponentInChildren<PlayerNameTag>();
+                if (tag != null) activeNameTags.Remove(tag);
+
                 Destroy(go);
                 playerCubes.Remove(key);
                 Debug.Log($"[Client] Cubo removido: {key}");

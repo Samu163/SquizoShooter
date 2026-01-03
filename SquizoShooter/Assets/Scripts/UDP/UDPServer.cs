@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using UnityEngine;
@@ -32,7 +33,10 @@ public class UDPServer : MonoBehaviour
     private int maxRoundsToWin = 5;
     private Dictionary<string, int> playerScores = new Dictionary<string, int>();
     private bool isRoundEnding = false;
-    private bool isGameStarted = false; 
+    private bool isGameStarted = false;
+
+
+    private int totalPlayersConnected = 0;
 
 
     private readonly object clientsLock = new object();
@@ -234,29 +238,68 @@ public class UDPServer : MonoBehaviour
     void HandleHandshake(EndPoint remote)
     {
         string newKey = Guid.NewGuid().ToString();
-        string randomName = NameGenerator.GetRandomName(); // Asignar nombre aleatorio
+        string randomName = NameGenerator.GetRandomName();
+        int assignedIndex = 0;
+        bool shouldSpectate = false;
 
         lock (clientsLock)
         {
             connectedClients[newKey] = remote;
 
-            // Datos Iniciales Juego
-            playerPositions[newKey] = Vector3.zero;
-            playerHealth[newKey] = 100f;
-            playerWeapons[newKey] = 1;
+            assignedIndex = totalPlayersConnected;
+            totalPlayersConnected++;
 
-            // Datos Iniciales Lobby
+            playerPositions[newKey] = Vector3.zero;
+            playerWeapons[newKey] = 1;
             playerNames[newKey] = randomName;
             playerReadyStatus[newKey] = false;
+
+            if (isGameStarted)
+            {
+
+                if (connectedClients.Count > 2)
+                {
+                    shouldSpectate = true;
+                    playerHealth[newKey] = 0f; 
+                    Debug.Log($"[Server] {randomName} entra como ESPECTADOR (Partida llena).");
+                }
+                else
+                {
+                    shouldSpectate = false;
+                    playerHealth[newKey] = 100f; 
+                    Debug.Log($"[Server] {randomName} entra a JUGAR (Host estaba solo).");
+                }
+            }
+            else
+            {
+                playerHealth[newKey] = 100f;
+            }
         }
 
-        Debug.Log($"[Server] HANDSHAKE de {randomName} ({newKey})");
-        SendWelcome(newKey, remote, isGameStarted);
+        SendWelcome(newKey, remote, isGameStarted, assignedIndex, shouldSpectate);
+
         BroadcastLobbyState();
+
         if (isGameStarted)
         {
             SendAllPlayerPositionsToSingleClient(newKey, remote);
             SendAllHealStationStatesToSingleClient(remote);
+
+            CheckRoundWinCondition();
+        }
+    }
+
+    void SendWelcome(string clientKey, EndPoint remote, bool gameInProgress, int spawnIndex, bool shouldSpectate)
+    {
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.Welcome);
+            writer.Write(clientKey);
+            writer.Write(gameInProgress);
+            writer.Write(spawnIndex);
+            writer.Write(shouldSpectate);
+
+            SendBinaryToClient(ms.ToArray(), remote);
         }
     }
     void HandleClientReady(BinaryReader reader)
@@ -404,7 +447,6 @@ public class UDPServer : MonoBehaviour
                 }
             }
         }
-
         if (aliveCount <= 1)
         {
             StartRoundEndSequence(lastAliveKey);
@@ -454,7 +496,7 @@ public class UDPServer : MonoBehaviour
         lock (clientsLock)
         {
             List<string> keys = new List<string>(playerHealth.Keys);
-            foreach (var k in keys) playerHealth[k] = 100f;
+            foreach (var k in keys) playerHealth[k] = 100f; 
         }
         isRoundEnding = false;
         BroadcastRoundReset();
@@ -478,15 +520,21 @@ public class UDPServer : MonoBehaviour
 
     void BroadcastGameStart(int maxRounds)
     {
+        int roundOffset = UnityEngine.Random.Range(0, 100);
+
         using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
         {
             w.Write((byte)MessageType.StartGame);
-            w.Write(maxRounds); 
+            w.Write(maxRounds);
+            w.Write(roundOffset); 
+
             byte[] data = ms.ToArray();
             List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
             foreach (var e in eps) SendBinaryToClient(data, e);
         }
     }
+
+    
 
     void BroadcastRoundWin(string winnerKey, string winnerName)
     {
@@ -515,16 +563,19 @@ public class UDPServer : MonoBehaviour
 
     void BroadcastRoundReset()
     {
+        int roundOffset = UnityEngine.Random.Range(0, 100);
+
         using (MemoryStream ms = new MemoryStream())
         using (BinaryWriter w = new BinaryWriter(ms))
         {
             w.Write((byte)MessageType.RoundReset);
+            w.Write(roundOffset);
+
             byte[] data = ms.ToArray();
             List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
             foreach (var ep in eps) SendBinaryToClient(data, ep);
         }
     }
-
     void HandleMove(BinaryReader reader, EndPoint remote)
     {
         string senderKey = reader.ReadString();
@@ -718,20 +769,6 @@ public class UDPServer : MonoBehaviour
 
         Debug.Log($"[Server] Enviado KILL_CONFIRMED a {shooterKey}");
     }
-
-    void SendWelcome(string clientKey, EndPoint remote, bool gameInProgress)
-    {
-        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
-        {
-            w.Write((byte)MessageType.Welcome);
-            w.Write(clientKey);
-            w.Write(gameInProgress);
-
-            byte[] data = ms.ToArray();
-            SendBinaryToClient(data, remote);
-        }
-    }
-
     void SendAllPlayerPositionsToSingleClient(string newKey, EndPoint remote)
     {
         lock (clientsLock)

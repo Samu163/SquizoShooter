@@ -209,46 +209,42 @@ public class PlayerController : MonoBehaviour
     // Respawn handling
     public void Respawn()
     {
-        lifeComponent.ResetHealth();
+        if (lifeComponent) lifeComponent.ResetHealth();
 
         Vector3 spawnPos = Vector3.zero;
+
         if (GameplayManager.Instance != null)
         {
-            spawnPos = GameplayManager.Instance.GetRandomSpawnPosition();
+            UDPClient client = FindObjectOfType<UDPClient>();
+            int finalIndex = 0;
+
+            if (client != null)
+            {
+                finalIndex = client.MySpawnIndex + client.CurrentRoundOffset;
+            }
+
+            spawnPos = GameplayManager.Instance.GetSpawnPosition(finalIndex);
         }
         else
         {
-            spawnPos = new Vector3(
-                Random.Range(-10f, 10f),
-                1f,
-                Random.Range(-10f, 10f)
-            );
+            spawnPos = new Vector3(0, 2, 0);
         }
 
-        if (controller != null)
-        {
-            controller.enabled = false;
-        }
-
+        if (controller != null) controller.enabled = false;
         transform.position = spawnPos;
 
-        playerMovement.ResetVelocity();
-        wallJumpComponent.ResetState();
-        slideComponent.ResetState();
+        if (playerMovement) playerMovement.ResetVelocity();
+        if (wallJumpComponent) wallJumpComponent.ResetState();
+        if (slideComponent) slideComponent.ResetState();
 
-        if (controller != null)
-        {
-            controller.enabled = true;
-        }
+        if (controller != null) controller.enabled = true;
+        if (playerVisuals) playerVisuals.ShowModel();
 
-        playerVisuals.ShowModel();
-
-        if (HealthBarUI.instance != null)
-        {
+        if (HealthBarUI.instance != null && lifeComponent != null)
             HealthBarUI.instance.UpdateUI(lifeComponent.Health, lifeComponent.MaxHealth);
-        }
 
-        playerSync.ResetSync(spawnPos, lifeComponent.Health);
+        if (playerSync && lifeComponent)
+            playerSync.ResetSync(spawnPos, lifeComponent.Health);
     }
 
     // Public API for remote players
