@@ -25,14 +25,14 @@ public class UDPServer : MonoBehaviour
     private readonly Dictionary<string, string> playerNames = new Dictionary<string, string>();
     private readonly Dictionary<string, bool> playerReadyStatus = new Dictionary<string, bool>();
 
-    private int maxRoundsToWin = 5;
-    private Dictionary<string, int> playerScores = new Dictionary<string, int>();
-    private bool isRoundEnding = false;
 
     private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>();
     private const float HEAL_STATION_COOLDOWN_TIME = 5.0f;
 
-    private bool isGameStarted = false;
+    private int maxRoundsToWin = 5;
+    private Dictionary<string, int> playerScores = new Dictionary<string, int>();
+    private bool isRoundEnding = false;
+    private bool isGameStarted = false; 
 
 
     private readonly object clientsLock = new object();
@@ -251,11 +251,13 @@ public class UDPServer : MonoBehaviour
         }
 
         Debug.Log($"[Server] HANDSHAKE de {randomName} ({newKey})");
-
-        SendWelcome(newKey, remote);
+        SendWelcome(newKey, remote, isGameStarted);
         BroadcastLobbyState();
-        SendAllPlayerPositionsToSingleClient(newKey, remote);
-        SendAllHealStationStatesToSingleClient(remote);
+        if (isGameStarted)
+        {
+            SendAllPlayerPositionsToSingleClient(newKey, remote);
+            SendAllHealStationStatesToSingleClient(remote);
+        }
     }
     void HandleClientReady(BinaryReader reader)
     {
@@ -717,13 +719,13 @@ public class UDPServer : MonoBehaviour
         Debug.Log($"[Server] Enviado KILL_CONFIRMED a {shooterKey}");
     }
 
-    void SendWelcome(string clientKey, EndPoint remote)
+    void SendWelcome(string clientKey, EndPoint remote, bool gameInProgress)
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
         {
-            writer.Write((byte)MessageType.Welcome);
-            writer.Write(clientKey);
+            w.Write((byte)MessageType.Welcome);
+            w.Write(clientKey);
+            w.Write(gameInProgress);
 
             byte[] data = ms.ToArray();
             SendBinaryToClient(data, remote);
