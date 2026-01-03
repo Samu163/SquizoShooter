@@ -7,6 +7,7 @@ public abstract class BaseWeapon : MonoBehaviour
     [SerializeField] protected float shootRange = 100f;
     [SerializeField] protected float shootDamage = 25f;
     [SerializeField] protected float fireRate = 4f;
+    [SerializeField] protected float Ammo = 4f;
 
     [Header("Recoil Data")]
     [SerializeField] public float recoilPitch = 5f;
