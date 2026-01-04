@@ -13,6 +13,7 @@ public class PlayerMovement : MonoBehaviour
     private PlayerInput playerInput;
     private Vector3 verticalVelocity;
     private bool isGrounded;
+    private PlayerAudioController audioController;
 
     public Vector3 VerticalVelocity => verticalVelocity;
     public bool IsGrounded => isGrounded;
@@ -24,6 +25,7 @@ public class PlayerMovement : MonoBehaviour
         controller = ctrl;
         playerController = pc;
         playerInput = pc.GetInput();
+        audioController = pc.GetComponent<PlayerAudioController>();
     }
 
     public void HandleMovement(WallJumpComponent wallRun, SlideComponent slide)
@@ -98,6 +100,7 @@ public class PlayerMovement : MonoBehaviour
         {
             verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
             wallRun.RegisterJump();
+            if (audioController) audioController.PlayJump();
         }
     }
 

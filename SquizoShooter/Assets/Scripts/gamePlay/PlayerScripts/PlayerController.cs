@@ -14,9 +14,11 @@ public class PlayerController : MonoBehaviour
     private PlayerVisuals playerVisuals;
     private PlayerCamera playerCamera;
     private WeaponManager weaponManager;
+    private PlayerAudioController audioController;
 
     private CharacterController controller;
     private bool isLocalPlayer = false;
+    private float _lastHealth = -1f;
 
     public bool IsLocalPlayer => isLocalPlayer;
     public bool IsDead => lifeComponent != null && lifeComponent.IsDead;
@@ -25,7 +27,6 @@ public class PlayerController : MonoBehaviour
     {
         controller = GetComponent<CharacterController>();
 
-        // Get components
         lifeComponent = GetComponent<LifeComponent>();
         playerMovement = GetComponent<PlayerMovement>();
         wallJumpComponent = GetComponent<WallJumpComponent>();
@@ -37,7 +38,6 @@ public class PlayerController : MonoBehaviour
         playerCamera = GetComponent<PlayerCamera>();
         weaponManager = GetComponent<WeaponManager>();
 
-        // Validate components
         if (lifeComponent == null) Debug.LogError("[PlayerController] LifeComponent is missing!");
         if (playerMovement == null) Debug.LogError("[PlayerController] PlayerMovement is missing!");
         if (wallJumpComponent == null) Debug.LogError("[PlayerController] WallRunComponent is missing!");
@@ -73,6 +73,7 @@ public class PlayerController : MonoBehaviour
         playerInput.Initialize(this);
         playerVisuals.Initialize(transform);
         playerCamera.Initialize(transform, playerInput);
+        audioController = GetComponent<PlayerAudioController>();
     }
 
     void SubscribeToInputEvents()
@@ -82,8 +83,6 @@ public class PlayerController : MonoBehaviour
         playerInput.OnJumpPressed += HandleJumpPressed;
         playerInput.OnShootPressed += HandleShootPressed;
         playerInput.OnSlidePressed += HandleSlidePressed;
-
-        // NEW: subscribe to held shooting for automatic fire
         playerInput.OnShootHeld += HandleShootHeld;
     }
 
@@ -94,8 +93,6 @@ public class PlayerController : MonoBehaviour
         playerInput.OnJumpPressed -= HandleJumpPressed;
         playerInput.OnShootPressed -= HandleShootPressed;
         playerInput.OnSlidePressed -= HandleSlidePressed;
-
-        // NEW: unsubscribe
         playerInput.OnShootHeld -= HandleShootHeld;
     }
 
@@ -114,7 +111,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // NEW: called every frame while mouse button is held
     void HandleShootHeld()
     {
         if (playerShooting != null)
@@ -140,7 +136,6 @@ public class PlayerController : MonoBehaviour
             playerMovement.HandleMovement(wallJumpComponent, slideComponent);
             if (weaponManager != null)
             {
-                //DEBUGING
                 weaponManager.HandleWeaponSwitchInput();
             }
             playerSync.SendPositionToServer();
@@ -177,9 +172,12 @@ public class PlayerController : MonoBehaviour
         playerCamera.SetSensitivity(sensX, sensY);
     }
 
-    // Death handling
     public void HandleDeath()
     {
+        if (audioController != null)
+        {
+            audioController.PlayDeath();
+        }
         playerVisuals.HideModel();
 
         if (controller != null)
@@ -190,10 +188,8 @@ public class PlayerController : MonoBehaviour
         if (isLocalPlayer && KillCountUI.instance != null)
         {
             KillCountUI.instance.ResetKills();
-            Debug.Log("[PlayerController] Kills reseteados al morir");
         }
 
-        // Send death to server
         playerSync.SendPlayerDataToServer();
 
         if (isLocalPlayer)
@@ -206,7 +202,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // Respawn handling
     public void Respawn()
     {
         if (lifeComponent) lifeComponent.ResetHealth();
@@ -247,7 +242,6 @@ public class PlayerController : MonoBehaviour
             playerSync.ResetSync(spawnPos, lifeComponent.Health);
     }
 
-    // Public API for remote players
     public void PlayShootAnimation()
     {
         playerVisuals.PlayShootAnimation();
@@ -273,17 +267,45 @@ public class PlayerController : MonoBehaviour
 
     public void UpdateHealth(float newHealth)
     {
-        
+        // 1. Inicialización para la primera vez
+        if (_lastHealth < 0)
+        {
+            _lastHealth = newHealth;
+        }
+
+        // 2. Lógica de Audio (SIMPLIFICADA Y BLINDADA)
+        if (audioController != null)
+        {
+            // CAMBIO CLAVE: Solo suena el "ouch" si nos han bajado vida Y seguimos vivos (> 0)
+            if (newHealth < _lastHealth && newHealth > 0)
+            {
+                audioController.PlayDamage();
+            }
+            // Si nos curamos
+            else if (newHealth > _lastHealth)
+            {
+                audioController.PlayHeal();
+            }
+            // Nota: Si newHealth <= 0, no entra en ninguno de los dos, 
+            // así que no suena nada aquí. El sonido de muerte lo lanza HandleDeath.
+        }
+
+        // 3. Actualizar datos internos
         lifeComponent.UpdateHealth(newHealth, isLocalPlayer);
+
         if (!isLocalPlayer)
         {
             playerVisuals.UpdateVisualOnHealth(newHealth);
         }
+
+        // 4. Gestionar Muerte
         if (isLocalPlayer && newHealth <= 0 && !IsDead)
         {
-            Debug.Log("[PlayerController] Salud llegó a 0 por red. Ejecutando muerte.");
             HandleDeath();
         }
+
+        // 5. Guardar estado para el siguiente frame
+        _lastHealth = newHealth;
     }
 
     public void SwitchWeaponVisuals(int weaponID)
@@ -308,7 +330,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // Getters
     public CharacterController GetController() => controller;
     public LifeComponent GetLifeComponent() => lifeComponent;
     public PlayerMovement GetMovement() => playerMovement;

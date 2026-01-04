@@ -9,6 +9,7 @@ public class PlayerShooting : MonoBehaviour
     private PlayerCamera playerCamera;
     private PlayerMovement playerMovement;
     private PlayerVisuals playerVisuals;
+    private PlayerAudioController audioController;
 
     public void Initialize(PlayerController pc, WeaponManager wm)
     {
@@ -19,6 +20,7 @@ public class PlayerShooting : MonoBehaviour
         playerCamera = pc.GetPlayerCamera();
         playerMovement = pc.GetMovement();
         playerVisuals = pc.GetVisuals();
+        audioController = pc.GetComponent<PlayerAudioController>();
     }
 
     public void TryShoot()
@@ -45,6 +47,10 @@ public class PlayerShooting : MonoBehaviour
         }
         string myKey = client != null ? client.ClientKey : "";
         weapon.PerformShoot(playerCamera.CameraTransform, client, myKey);
+        if (audioController != null)
+        {
+            audioController.PlayShoot(weapon.WeaponID);
+        }
     }
 
     private void ApplyPlayerEffects(BaseWeapon weapon)

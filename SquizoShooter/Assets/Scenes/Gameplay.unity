@@ -197,7 +197,7 @@ Transform:
   m_GameObject: {fileID: 14129589}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.54, z: 0}
+  m_LocalPosition: {x: 140.09, y: 0.54, z: -30.79}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -9505,6 +9505,60 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.027999995, y: 0.0031366665, z: 0.00050000264}
   m_Center: {x: 1.7244886e-11, y: 0.0010683404, z: 0.000000014097438}
+--- !u!1 &1730691822
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1730691824}
+  - component: {fileID: 1730691823}
+  m_Layer: 0
+  m_Name: AudioManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1730691823
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1730691822}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 93f5f4c7e1730de4486be419cb691657, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AudioManager
+  pasosSuelo:
+  - {fileID: 8300000, guid: 2496c2c2f3a68eb498c108483a530d66, type: 3}
+  salto: {fileID: 8300000, guid: a1d45622b2086f543b42a1d757cb76cf, type: 3}
+  disparosArmas:
+  - {fileID: 8300000, guid: 5212df1000e277147853513096d224eb, type: 3}
+  - {fileID: 8300000, guid: 5212df1000e277147853513096d224eb, type: 3}
+  - {fileID: 8300000, guid: 5212df1000e277147853513096d224eb, type: 3}
+  recibirDano: {fileID: 8300000, guid: 34d3bc15dee996a40a803f28317d6a66, type: 3}
+  curarse: {fileID: 8300000, guid: 729ce248b94608b449dd9a438662e70f, type: 3}
+  morir: {fileID: 8300000, guid: 88c61bfede15ec44a982a90c78e06684, type: 3}
+--- !u!4 &1730691824
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1730691822}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 147.02145, y: 3.8424, z: -11.85225}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!65 &1740240647
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -15211,3 +15265,4 @@ SceneRoots:
   - {fileID: 874890685}
   - {fileID: 1926854991}
   - {fileID: 1920089609}
+  - {fileID: 1730691824}
