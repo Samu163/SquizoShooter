@@ -9,7 +9,6 @@ public class AudioManager : MonoBehaviour
     public AudioClip salto;
 
     [Header("Armas (Orden ID)")]
-    // Asegúrate de arrastrarlos en el mismo orden que tu WeaponManager (0:Pistola, 1:Escopeta, 2:Minigun)
     public AudioClip[] disparosArmas;
 
     [Header("Estado Player")]

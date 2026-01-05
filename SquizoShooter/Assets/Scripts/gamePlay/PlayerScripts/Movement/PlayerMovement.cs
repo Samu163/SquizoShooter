@@ -103,11 +103,9 @@ public class PlayerMovement : MonoBehaviour
             verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
             wallRun.RegisterJump();
 
-            // Sonido Local
             var audio = playerController.GetComponent<PlayerAudioController>();
             if (audio) audio.PlayJump();
 
-            // RED: Enviar salto a los demás (AÑADIR ESTO)
             if (playerController.IsLocalPlayer && udpClient != null)
             {
                 udpClient.SendJump();

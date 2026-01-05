@@ -159,13 +159,10 @@ public class PlayerController : MonoBehaviour
         AudioListener listener = GetComponentInChildren<AudioListener>();
         if (listener != null)
         {
-            // Solo activamos el AudioListener si ESTE es el jugador local.
-            // Si es un enemigo (isLocal == false), se apaga.
             listener.enabled = isLocal;
         }
         else
         {
-            // Debug por si acaso tu cámara no tiene AudioListener y hay otro suelto por la escena
             if (isLocal) Debug.LogWarning("¡Cuidado! El Player Local no tiene AudioListener en sus hijos.");
         }
         if (isLocal)
@@ -278,30 +275,23 @@ public class PlayerController : MonoBehaviour
 
     public void UpdateHealth(float newHealth)
     {
-        // 1. Inicialización para la primera vez
         if (_lastHealth < 0)
         {
             _lastHealth = newHealth;
         }
 
-        // 2. Lógica de Audio (SIMPLIFICADA Y BLINDADA)
         if (audioController != null)
         {
-            // CAMBIO CLAVE: Solo suena el "ouch" si nos han bajado vida Y seguimos vivos (> 0)
             if (newHealth < _lastHealth && newHealth > 0)
             {
                 audioController.PlayDamage();
             }
-            // Si nos curamos
             else if (newHealth > _lastHealth)
             {
                 audioController.PlayHeal();
             }
-            // Nota: Si newHealth <= 0, no entra en ninguno de los dos, 
-            // así que no suena nada aquí. El sonido de muerte lo lanza HandleDeath.
         }
 
-        // 3. Actualizar datos internos
         lifeComponent.UpdateHealth(newHealth, isLocalPlayer);
 
         if (!isLocalPlayer)
@@ -309,13 +299,11 @@ public class PlayerController : MonoBehaviour
             playerVisuals.UpdateVisualOnHealth(newHealth);
         }
 
-        // 4. Gestionar Muerte
         if (isLocalPlayer && newHealth <= 0 && !IsDead)
         {
             HandleDeath();
         }
 
-        // 5. Guardar estado para el siguiente frame
         _lastHealth = newHealth;
     }
 

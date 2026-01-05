@@ -8,10 +8,9 @@ public class PlayerAudioController : MonoBehaviour
 
     [Header("Configuración de Distancias")]
     public float distanciaCorta = 30f;
-    public float distanciaLarga = 100f; // Bajado un poco para acentuar el efecto
+    public float distanciaLarga = 100f;
 
     [Header("Ajuste Curva Disparos")]
-    [Tooltip("Distancia a partir de la cual el sonido empieza a bajar. Para que se note la distancia, ponlo bajo (ej: 2 o 3).")]
     public float minDistanceDisparos = 2f;
 
     [Header("Configuración Pasos")]
@@ -32,7 +31,6 @@ public class PlayerAudioController : MonoBehaviour
 
     void Start()
     {
-        // Auto-asignación de seguridad
         if (shortRangeSource == null || longRangeSource == null)
         {
             AudioSource[] sources = GetComponents<AudioSource>();
@@ -41,12 +39,9 @@ public class PlayerAudioController : MonoBehaviour
             if (longRangeSource == null) longRangeSource = shortRangeSource;
         }
 
-        // --- CONFIGURACIÓN DIFERENCIADA ---
 
-        // 1. PASOS (Lineal): Baja suave y constante hasta desaparecer a los 30m.
         ConfigurarSource(shortRangeSource, 2f, distanciaCorta, AudioRolloffMode.Linear);
 
-        // 2. DISPAROS (Logarítmico): Baja fuerte al principio para que notes la distancia enseguida.
         ConfigurarSource(longRangeSource, minDistanceDisparos, distanciaLarga, AudioRolloffMode.Logarithmic);
 
         _posicionAnterior = transform.position;
@@ -56,11 +51,11 @@ public class PlayerAudioController : MonoBehaviour
     {
         if (source != null)
         {
-            source.spatialBlend = 1.0f; // 3D Real
+            source.spatialBlend = 1.0f;
             source.minDistance = minDest;
             source.maxDistance = maxDist;
             source.rolloffMode = mode;
-            source.dopplerLevel = 0f; // Evita distorsión de tono al moverse
+            source.dopplerLevel = 0f; 
         }
     }
 
@@ -170,7 +165,7 @@ public class PlayerAudioController : MonoBehaviour
         aSource.clip = clip;
         aSource.volume = volume;
         aSource.spatialBlend = 1f;
-        aSource.rolloffMode = AudioRolloffMode.Linear; // Muerte Lineal corta
+        aSource.rolloffMode = AudioRolloffMode.Linear; 
         aSource.minDistance = 2f;
         aSource.maxDistance = maxDistance;
 
