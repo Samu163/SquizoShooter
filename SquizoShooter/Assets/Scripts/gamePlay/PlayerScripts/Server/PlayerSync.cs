@@ -69,6 +69,23 @@ public class PlayerSync : MonoBehaviour
             }
         }
     }
+    public void SendWeaponThrow(int weaponID, Vector3 position, Vector3 direction)
+    {
+        // Implementa tu lógica de red aquí
+        if (udpClient != null && udpClient.IsConnected)
+        {
+            //udpClient.SendWeaponThrow(weaponID, position, direction);
+        }
+    }
+
+    public void SendWeaponPickup(int weaponID)
+    {
+        // Implementa tu lógica de red aquí
+        if (udpClient != null && udpClient.IsConnected)
+        {
+            // udpClient.SendWeaponPickup(weaponID);
+        }
+    }
 
     public void ResetSync(Vector3 spawnPos, float health)
     {

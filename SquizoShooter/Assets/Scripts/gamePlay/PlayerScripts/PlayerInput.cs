@@ -8,6 +8,8 @@ public class PlayerInput : MonoBehaviour
     public event Action OnShootPressed;
     public event Action OnShootHeld;  
     public event Action OnSlidePressed;
+    public event Action OnQPressed;
+    public event Action OnEPressed;
 
     // Continuous input (no events, just read)
     public float HorizontalInput { get; private set; }
@@ -62,6 +64,14 @@ public class PlayerInput : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.LeftControl))
         {
             OnSlidePressed?.Invoke();
+        }
+        if (Input.GetKeyDown(KeyCode.Q))
+        {
+            OnQPressed?.Invoke();
+        }
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            OnEPressed?.Invoke();
         }
     }
 }

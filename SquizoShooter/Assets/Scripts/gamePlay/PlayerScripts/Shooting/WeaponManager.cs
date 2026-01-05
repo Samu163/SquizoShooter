@@ -76,6 +76,23 @@ public class WeaponManager : MonoBehaviour
         }
     }
 
+    public void UnequipCurrentWeapon()
+    {
+        if (currentWeapon != null)
+        {
+            currentWeapon.SetActive(false);
+            currentWeapon = null;
+        }
+
+        currentWeaponIndex = -1; 
+       
+        if (playerController != null)
+        {
+            playerController.SwitchWeaponVisuals(0); 
+        }
+
+        Debug.Log("[WeaponManager] Weapon unequipped - player has no weapon");
+    }
     public void SetWeaponByID(int weaponID)
     {
         for (int i = 0; i < availableWeapons.Count; i++)
@@ -91,6 +108,8 @@ public class WeaponManager : MonoBehaviour
     }
     public void HandleWeaponSwitchInput()
     {
+        if (currentWeapon == null) return;
+
         if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchWeapon(0);
         else if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchWeapon(1);
         else if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchWeapon(2);

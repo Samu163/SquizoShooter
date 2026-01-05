@@ -15,6 +15,7 @@ public class PlayerController : MonoBehaviour
     private PlayerCamera playerCamera;
     private WeaponManager weaponManager;
     private PlayerAudioController audioController;
+    private WeaponThrowSystem weaponThrowSystem;
 
     private CharacterController controller;
     private bool isLocalPlayer = false;
@@ -37,6 +38,7 @@ public class PlayerController : MonoBehaviour
         playerVisuals = GetComponent<PlayerVisuals>();
         playerCamera = GetComponent<PlayerCamera>();
         weaponManager = GetComponent<WeaponManager>();
+        weaponThrowSystem = GetComponent<WeaponThrowSystem>();
 
         if (lifeComponent == null) Debug.LogError("[PlayerController] LifeComponent is missing!");
         if (playerMovement == null) Debug.LogError("[PlayerController] PlayerMovement is missing!");
@@ -48,6 +50,7 @@ public class PlayerController : MonoBehaviour
         if (playerVisuals == null) Debug.LogError("[PlayerController] PlayerVisuals is missing!");
         if (playerCamera == null) Debug.LogError("[PlayerController] PlayerCamera is missing!");
         if (weaponManager == null) Debug.LogError("[PlayerController] WeaponManager is missing!");
+        if (weaponThrowSystem == null) Debug.LogError("[PlayerController] WeaponThrowSystem is missing!");
     }
 
     void Start()
@@ -74,6 +77,7 @@ public class PlayerController : MonoBehaviour
         playerVisuals.Initialize(transform);
         playerCamera.Initialize(transform, playerInput);
         audioController = GetComponent<PlayerAudioController>();
+        weaponThrowSystem.Initialize(weaponManager, this, playerCamera, playerSync);
     }
 
     void SubscribeToInputEvents()
@@ -84,6 +88,8 @@ public class PlayerController : MonoBehaviour
         playerInput.OnShootPressed += HandleShootPressed;
         playerInput.OnSlidePressed += HandleSlidePressed;
         playerInput.OnShootHeld += HandleShootHeld;
+        playerInput.OnQPressed += HandleThrowWeapon;
+        playerInput.OnEPressed += HandlePickUpWeapon;
     }
 
     void UnsubscribeFromInputEvents()
@@ -94,6 +100,8 @@ public class PlayerController : MonoBehaviour
         playerInput.OnShootPressed -= HandleShootPressed;
         playerInput.OnSlidePressed -= HandleSlidePressed;
         playerInput.OnShootHeld -= HandleShootHeld;
+        playerInput.OnQPressed -= HandleThrowWeapon;
+        playerInput.OnEPressed -= HandlePickUpWeapon;
     }
 
     void HandleJumpPressed()
@@ -125,6 +133,32 @@ public class PlayerController : MonoBehaviour
         slideComponent.TryStartSlide();
     }
 
+    void HandleThrowWeapon()
+    {
+        if (IsDead) return;
+
+        if (weaponThrowSystem != null)
+        {
+            weaponThrowSystem.ThrowCurrentWeapon();
+        }
+        else
+        {
+            Debug.LogWarning("[PlayerController] WeaponThrowSystem no estï¿½ disponible para lanzar el arma.");
+        }
+    }
+
+    void HandlePickUpWeapon()
+    {
+        if (IsDead) return;
+        if (weaponThrowSystem != null)
+        {
+            weaponThrowSystem.TryPickupWeapon();
+        }
+        else
+        {
+            Debug.LogWarning("[PlayerController] WeaponThrowSystem no estï¿½ disponible para recoger el arma.");
+        }
+    }
     void Update()
     {
         if (!isLocalPlayer) return;
@@ -163,7 +197,7 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            if (isLocal) Debug.LogWarning("¡Cuidado! El Player Local no tiene AudioListener en sus hijos.");
+            if (isLocal) Debug.LogWarning("ï¿½Cuidado! El Player Local no tiene AudioListener en sus hijos.");
         }
         if (isLocal)
         {

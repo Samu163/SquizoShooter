@@ -817,6 +817,7 @@ GameObject:
   - component: {fileID: 5909041087245816382}
   - component: {fileID: 329999652210186343}
   - component: {fileID: 6795481123844834663}
+  - component: {fileID: 3075403055006935559}
   - component: {fileID: 5972932948204072391}
   m_Layer: 0
   m_Name: PlayerController
@@ -1120,6 +1121,29 @@ MonoBehaviour:
   - {fileID: 8068478369397602952}
   - {fileID: 6324535325169665588}
   - {fileID: 2433601640929122139}
+--- !u!114 &3075403055006935559
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7989583440541540091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b935ca7c4950a647a61239a2e83e135, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponThrowSystem
+  throwForce: 8
+  throwUpwardForce: 2
+  throwTorque: 5
+  despawnTime: 30
+  pickupRadius: 2
+  playerLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  pistolDropPrefab: {fileID: 0}
+  minigunDropPrefab: {fileID: 0}
+  shotgunDropPrefab: {fileID: 0}
 --- !u!114 &5972932948204072391
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1136,6 +1160,7 @@ MonoBehaviour:
   longRangeSource: {fileID: 7223250686259812856}
   distanciaCorta: 10
   distanciaLarga: 80
+  minDistanceDisparos: 2
   capasSuelo:
     serializedVersion: 2
     m_Bits: 4294967295

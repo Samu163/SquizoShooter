@@ -44,6 +44,9 @@ public class PlayerVisuals : MonoBehaviour
         // 2. Activar la correcta según el ID definido en tus scripts de armas
         switch (weaponID)
         {
+            case 0:
+                // Sin arma equipada
+                break;
             case 1: // PistolWeapon.cs tiene ID 1
                 if (pistolModel) pistolModel.SetActive(true);
                 break;
