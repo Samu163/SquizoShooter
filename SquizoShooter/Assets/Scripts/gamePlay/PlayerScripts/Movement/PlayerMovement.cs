@@ -14,6 +14,7 @@ public class PlayerMovement : MonoBehaviour
     private Vector3 verticalVelocity;
     private bool isGrounded;
     private PlayerAudioController audioController;
+    private UDPClient udpClient;
 
     public Vector3 VerticalVelocity => verticalVelocity;
     public bool IsGrounded => isGrounded;
@@ -26,6 +27,7 @@ public class PlayerMovement : MonoBehaviour
         playerController = pc;
         playerInput = pc.GetInput();
         audioController = pc.GetComponent<PlayerAudioController>();
+        udpClient = FindObjectOfType<UDPClient>();
     }
 
     public void HandleMovement(WallJumpComponent wallRun, SlideComponent slide)
@@ -100,7 +102,16 @@ public class PlayerMovement : MonoBehaviour
         {
             verticalVelocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
             wallRun.RegisterJump();
-            if (audioController) audioController.PlayJump();
+
+            // Sonido Local
+            var audio = playerController.GetComponent<PlayerAudioController>();
+            if (audio) audio.PlayJump();
+
+            // RED: Enviar salto a los demás (AÑADIR ESTO)
+            if (playerController.IsLocalPlayer && udpClient != null)
+            {
+                udpClient.SendJump();
+            }
         }
     }
 

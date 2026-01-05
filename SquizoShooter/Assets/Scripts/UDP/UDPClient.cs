@@ -81,7 +81,8 @@ public class UDPClient : MonoBehaviour
         StartGame = 22,
         RoundWin = 30, 
         MatchWin = 31, 
-        RoundReset = 32
+        RoundReset = 32,
+        PlayerJump = 33
 
     }
 
@@ -221,6 +222,10 @@ public class UDPClient : MonoBehaviour
                         HandleGoodbye(reader);
                         break;
 
+                    case MessageType.PlayerJump:
+                        HandlePlayerJump(reader);
+                        break;
+
                     default:
                         Debug.LogWarning($"[Client] Tipo de mensaje desconocido: {msgType}");
                         break;
@@ -269,7 +274,36 @@ public class UDPClient : MonoBehaviour
             }
         });
     }
+    void HandlePlayerJump(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        if (key == clientKey) return; // Ignorar mi propio salto (ya sonó localmente)
 
+        SafeEnqueueMain(() =>
+        {
+            lock (cubesLock)
+            {
+                if (playerCubes.TryGetValue(key, out GameObject cube))
+                {
+                    var audio = cube.GetComponent<PlayerAudioController>();
+                    if (audio != null) audio.PlayJump();
+                }
+            }
+        });
+    }
+
+    public void SendJump()
+    {
+        if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
+
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.PlayerJump);
+            writer.Write(clientKey);
+            SendBinary(ms.ToArray());
+        }
+    }
     public void SpawnMyPlayerNow()
     {
         Vector3 spawnPos = Vector3.zero;

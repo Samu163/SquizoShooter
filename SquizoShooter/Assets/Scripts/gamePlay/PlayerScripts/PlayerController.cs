@@ -156,7 +156,18 @@ public class PlayerController : MonoBehaviour
 
         playerCamera.SetAsLocalCamera(isLocal);
         playerVisuals.SetAsLocalPlayer(isLocal);
-
+        AudioListener listener = GetComponentInChildren<AudioListener>();
+        if (listener != null)
+        {
+            // Solo activamos el AudioListener si ESTE es el jugador local.
+            // Si es un enemigo (isLocal == false), se apaga.
+            listener.enabled = isLocal;
+        }
+        else
+        {
+            // Debug por si acaso tu cámara no tiene AudioListener y hay otro suelto por la escena
+            if (isLocal) Debug.LogWarning("¡Cuidado! El Player Local no tiene AudioListener en sus hijos.");
+        }
         if (isLocal)
         {
             Cursor.lockState = CursorLockMode.Locked;
@@ -326,6 +337,10 @@ public class PlayerController : MonoBehaviour
             if (currentWeapon != null)
             {
                 currentWeapon.SimulateShootVisualsForNetwork();
+                if (audioController != null)
+                {
+                    audioController.PlayShoot(currentWeapon.WeaponID);
+                }
             }
         }
     }

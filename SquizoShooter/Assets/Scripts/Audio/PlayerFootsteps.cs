@@ -2,13 +2,22 @@ using UnityEngine;
 
 public class PlayerAudioController : MonoBehaviour
 {
-    [Header("Componentes")]
-    public AudioSource audioSource;
+    [Header("Fuentes de Audio")]
+    public AudioSource shortRangeSource;
+    public AudioSource longRangeSource;
+
+    [Header("Configuración de Distancias")]
+    public float distanciaCorta = 30f;
+    public float distanciaLarga = 100f; // Bajado un poco para acentuar el efecto
+
+    [Header("Ajuste Curva Disparos")]
+    [Tooltip("Distancia a partir de la cual el sonido empieza a bajar. Para que se note la distancia, ponlo bajo (ej: 2 o 3).")]
+    public float minDistanceDisparos = 2f;
 
     [Header("Configuración Pasos")]
     public LayerMask capasSuelo;
     public float distanciaRayoSuelo = 1.2f;
-    public float velocidadMinimaParaPasos = 0.1f;
+    public float velocidadMinimaParaPasos = 0.5f;
     public float intervaloCaminar = 0.5f;
     public float intervaloCorrer = 0.3f;
 
@@ -19,33 +28,69 @@ public class PlayerAudioController : MonoBehaviour
 
     private float _timerPasos;
     private Vector3 _posicionAnterior;
-    private float _velocidadActual;
+    private float _velocidadSuavizada;
 
     void Start()
     {
+        // Auto-asignación de seguridad
+        if (shortRangeSource == null || longRangeSource == null)
+        {
+            AudioSource[] sources = GetComponents<AudioSource>();
+            if (sources.Length >= 1) shortRangeSource = sources[0];
+            if (sources.Length >= 2) longRangeSource = sources[1];
+            if (longRangeSource == null) longRangeSource = shortRangeSource;
+        }
+
+        // --- CONFIGURACIÓN DIFERENCIADA ---
+
+        // 1. PASOS (Lineal): Baja suave y constante hasta desaparecer a los 30m.
+        ConfigurarSource(shortRangeSource, 2f, distanciaCorta, AudioRolloffMode.Linear);
+
+        // 2. DISPAROS (Logarítmico): Baja fuerte al principio para que notes la distancia enseguida.
+        ConfigurarSource(longRangeSource, minDistanceDisparos, distanciaLarga, AudioRolloffMode.Logarithmic);
+
         _posicionAnterior = transform.position;
-        if (audioSource == null) audioSource = GetComponent<AudioSource>();
+    }
+
+    void ConfigurarSource(AudioSource source, float minDest, float maxDist, AudioRolloffMode mode)
+    {
+        if (source != null)
+        {
+            source.spatialBlend = 1.0f; // 3D Real
+            source.minDistance = minDest;
+            source.maxDistance = maxDist;
+            source.rolloffMode = mode;
+            source.dopplerLevel = 0f; // Evita distorsión de tono al moverse
+        }
+    }
+
+    void OnEnable()
+    {
+        _posicionAnterior = transform.position;
+        _velocidadSuavizada = 0f;
+        _timerPasos = 0f;
     }
 
     void Update()
     {
+        if (Time.deltaTime < 0.001f) return;
         DetectarMovimientoYPasos();
     }
 
     void DetectarMovimientoYPasos()
     {
-        // 1. Calcular velocidad
         float distanciaMovida = Vector3.Distance(transform.position, _posicionAnterior);
-        _velocidadActual = distanciaMovida / Time.deltaTime;
+        float velocidadInstantanea = 0f;
+        if (Time.deltaTime > 0f) velocidadInstantanea = distanciaMovida / Time.deltaTime;
 
-        // 2. Comprobar suelo (Solo para saber si reproducir pasos)
+        _velocidadSuavizada = Mathf.Lerp(_velocidadSuavizada, velocidadInstantanea, Time.deltaTime * 5f);
+        if (float.IsNaN(_velocidadSuavizada)) _velocidadSuavizada = 0f;
+
         bool estaEnSuelo = Physics.Raycast(transform.position, Vector3.down, distanciaRayoSuelo, capasSuelo);
 
-        // 3. Lógica de Pasos
-        if (_velocidadActual > velocidadMinimaParaPasos && estaEnSuelo)
+        if (_velocidadSuavizada > velocidadMinimaParaPasos && estaEnSuelo)
         {
-            // Asumiendo que sprintSpeed es aprox 8, ponemos el corte en 6
-            float intervaloActual = _velocidadActual > 6f ? intervaloCorrer : intervaloCaminar;
+            float intervaloActual = _velocidadSuavizada > 6f ? intervaloCorrer : intervaloCaminar;
             _timerPasos += Time.deltaTime;
 
             if (_timerPasos >= intervaloActual)
@@ -56,7 +101,7 @@ public class PlayerAudioController : MonoBehaviour
         }
         else
         {
-            _timerPasos = intervaloCaminar;
+            _timerPasos = intervaloCaminar * 0.9f;
         }
 
         _posicionAnterior = transform.position;
@@ -64,22 +109,13 @@ public class PlayerAudioController : MonoBehaviour
 
     void ReproducirPaso()
     {
-        if (AudioManager.instance == null) return;
-        AudioClip clip = AudioManager.instance.GetRandomFootstep();
-
-        if (clip != null)
-        {
-            audioSource.pitch = Random.Range(0.9f, 1.1f);
-            audioSource.PlayOneShot(clip, volumenPasos);
-        }
+        PlaySound(shortRangeSource, AudioManager.instance?.GetRandomFootstep(), volumenPasos, true);
     }
 
-    // --- FUNCIONES PÚBLICAS ---
-
-    public void PlayJump() // Solo salto normal
+    public void PlayJump()
     {
-        if (AudioManager.instance && AudioManager.instance.salto)
-            PlaySound(AudioManager.instance.salto, 0.7f);
+        if (AudioManager.instance)
+            PlaySound(shortRangeSource, AudioManager.instance.salto, 0.7f);
     }
 
     public void PlayShoot(int weaponID)
@@ -87,41 +123,58 @@ public class PlayerAudioController : MonoBehaviour
         if (AudioManager.instance)
         {
             AudioClip clip = AudioManager.instance.GetWeaponShot(weaponID);
-            if (clip != null)
-            {
-                audioSource.pitch = Random.Range(0.95f, 1.05f);
-                audioSource.PlayOneShot(clip, volumenDisparo);
-            }
+            // Variación ligera para disparos
+            if (longRangeSource != null) longRangeSource.pitch = Random.Range(0.95f, 1.05f);
+
+            PlaySound(longRangeSource, clip, volumenDisparo);
         }
     }
 
     public void PlayDamage()
     {
-        if (AudioManager.instance && AudioManager.instance.recibirDano)
-            PlaySound(AudioManager.instance.recibirDano, volumenGritos);
+        if (AudioManager.instance)
+            PlaySound(shortRangeSource, AudioManager.instance.recibirDano, volumenGritos);
     }
 
     public void PlayHeal()
     {
-        if (AudioManager.instance && AudioManager.instance.curarse)
-            PlaySound(AudioManager.instance.curarse, volumenGritos);
+        if (AudioManager.instance)
+            PlaySound(shortRangeSource, AudioManager.instance.curarse, volumenGritos);
     }
 
     public void PlayDeath()
     {
-        if (AudioManager.instance != null && AudioManager.instance.morir != null)
+        if (AudioManager.instance && AudioManager.instance.morir)
         {
-            // ERROR COMÚN: No uses 'audioSource.PlayOneShot' aquí.
-            // SOLUCIÓN: Usar AudioSource.PlayClipAtPoint.
-
-            // Esto crea un objeto "fantasma" temporal en la escena. 
-            // Como es un objeto nuevo, NO está desactivado y el sonido sí suena.
-            AudioSource.PlayClipAtPoint(AudioManager.instance.morir, transform.position, 1f);
+            PlayClipAtPointCustom(AudioManager.instance.morir, transform.position, 1f, distanciaCorta);
         }
     }
 
-    private void PlaySound(AudioClip clip, float vol)
+    private void PlaySound(AudioSource source, AudioClip clip, float vol, bool randomPitch = false)
     {
-        audioSource.PlayOneShot(clip, vol);
+        if (source != null && clip != null)
+        {
+            if (randomPitch) source.pitch = Random.Range(0.9f, 1.1f);
+            else source.pitch = 1f;
+
+            source.PlayOneShot(clip, vol);
+        }
+    }
+
+    private void PlayClipAtPointCustom(AudioClip clip, Vector3 pos, float volume, float maxDistance)
+    {
+        GameObject tempGO = new GameObject("TempAudio_Death");
+        tempGO.transform.position = pos;
+
+        AudioSource aSource = tempGO.AddComponent<AudioSource>();
+        aSource.clip = clip;
+        aSource.volume = volume;
+        aSource.spatialBlend = 1f;
+        aSource.rolloffMode = AudioRolloffMode.Linear; // Muerte Lineal corta
+        aSource.minDistance = 2f;
+        aSource.maxDistance = maxDistance;
+
+        aSource.Play();
+        Destroy(tempGO, clip.length + 0.1f);
     }
 }

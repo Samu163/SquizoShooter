@@ -62,7 +62,8 @@ public class UDPServer : MonoBehaviour
         StartGame = 22,
         RoundWin = 30, 
         MatchWin = 31,
-        RoundReset = 32
+        RoundReset = 32,
+        PlayerJump = 33
     }
 
     public void StartServer()
@@ -175,6 +176,10 @@ public class UDPServer : MonoBehaviour
 
                     case MessageType.Goodbye:
                         HandleGoodbye(reader);
+                        break;
+
+                    case MessageType.PlayerJump:
+                        HandlePlayerJump(reader);
                         break;
 
                     default:
@@ -720,7 +725,27 @@ public class UDPServer : MonoBehaviour
         string key = reader.ReadString();
         RemoveClientByKey(key);
     }
+    void HandlePlayerJump(BinaryReader reader)
+    {
+        string senderKey = reader.ReadString();
+        // Reenviar a todos
+        BroadcastPlayerJump(senderKey);
+    }
+    void BroadcastPlayerJump(string senderKey)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.PlayerJump);
+            writer.Write(senderKey);
 
+            byte[] data = ms.ToArray();
+            List<EndPoint> snapshot;
+            lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
+
+            foreach (var ep in snapshot) SendBinaryToClient(data, ep);
+        }
+    }
     void EndHealStationCooldown(int stationID)
     {
         Debug.Log($"[Server] Cooldown de HealStation {stationID} terminado.");
