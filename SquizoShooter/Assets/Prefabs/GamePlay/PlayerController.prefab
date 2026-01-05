@@ -1141,9 +1141,9 @@ MonoBehaviour:
   playerLayer:
     serializedVersion: 2
     m_Bits: 0
-  pistolDropPrefab: {fileID: 0}
-  minigunDropPrefab: {fileID: 0}
-  shotgunDropPrefab: {fileID: 0}
+  pistolDropPrefab: {fileID: 4665942579900937197, guid: d49b1c6a3f966534aae0936a7da31fb4, type: 3}
+  minigunDropPrefab: {fileID: 4930094434945823423, guid: 2cdce1067d4c27e478ac7381a8c520fc, type: 3}
+  shotgunDropPrefab: {fileID: 3202817893664463616, guid: 8b1b57c822a71a147a6bf405a4042c85, type: 3}
 --- !u!114 &5972932948204072391
 MonoBehaviour:
   m_ObjectHideFlags: 0

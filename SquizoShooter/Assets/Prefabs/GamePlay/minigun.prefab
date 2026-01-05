@@ -1,0 +1,121 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &2356464757897143889
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.079600394
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.079600394
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.079600394
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0.169
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1.275
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -6.233
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.85450363
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0.5194454
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 832843216365915950, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: b4d2c4f9f435fa641bf0ca31b89a0119, type: 2}
+    - target: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_Name
+      value: minigun
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2434760128299978445, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: a4c64f38c3df882419dc028f7b1cb85f, type: 2}
+    - target: {fileID: 2642893500582213309, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: b4d2c4f9f435fa641bf0ca31b89a0119, type: 2}
+    - target: {fileID: 3895628067214847790, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 4b66daf6861cff54893216a7e65efcce, type: 2}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6103372859275720952}
+  m_SourcePrefab: {fileID: 100100000, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+--- !u!1 &3202817893664463616 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+  m_PrefabInstance: {fileID: 2356464757897143889}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &6103372859275720952
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3202817893664463616}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a3dfb27083b7954bb90580df088acfb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MiniGunWeapon
+  shootRange: 100
+  shootDamage: 25
+  fireRate: 4
+  Ammo: 4
+  recoilPitch: 5
+  recoilYaw: 1
+  recoilBack: 0.2
+  weaponModel: {fileID: 3202817893664463616}
+  firePoint: {fileID: 0}
+  bulletTrailPrefab: {fileID: 0}
