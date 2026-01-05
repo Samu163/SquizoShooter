@@ -91,6 +91,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
       insertIndex: -1
       addedObject: {fileID: 6103372859275720952}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4619021321526901256}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e4cf3028f46667438fe271981540921, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6170070038579074040}
   m_SourcePrefab: {fileID: 100100000, guid: 1e4cf3028f46667438fe271981540921, type: 3}
 --- !u!1 &3202817893664463616 stripped
 GameObject:
@@ -119,3 +125,51 @@ MonoBehaviour:
   weaponModel: {fileID: 3202817893664463616}
   firePoint: {fileID: 0}
   bulletTrailPrefab: {fileID: 0}
+--- !u!54 &4619021321526901256
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3202817893664463616}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 1
+  m_Constraints: 0
+  m_CollisionDetection: 2
+--- !u!65 &6170070038579074040
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3202817893664463616}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 2.4850342, y: 2.6386156, z: 10.284133}
+  m_Center: {x: 0.00015393375, y: 0.29291794, z: 1.9107639}

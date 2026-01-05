@@ -12,6 +12,8 @@ GameObject:
   - component: {fileID: 1469521666376602223}
   - component: {fileID: 6057267508962824773}
   - component: {fileID: 439188929571566841}
+  - component: {fileID: 1903270593778900657}
+  - component: {fileID: 7925868744450559828}
   m_Layer: 0
   m_Name: pistola
   m_TagString: Untagged
@@ -113,6 +115,54 @@ MonoBehaviour:
   weaponModel: {fileID: 4665942579900937197}
   firePoint: {fileID: 0}
   bulletTrailPrefab: {fileID: 0}
+--- !u!54 &1903270593778900657
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4665942579900937197}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 1
+  m_Constraints: 0
+  m_CollisionDetection: 2
+--- !u!65 &7925868744450559828
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4665942579900937197}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 3.807, y: 2.4855933, z: 1.391348}
+  m_Center: {x: 0.54127985, y: 0.38267604, z: -0.21381992}
 --- !u!1001 &4953816022255864197
 PrefabInstance:
   m_ObjectHideFlags: 0

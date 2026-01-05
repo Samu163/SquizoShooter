@@ -1,13 +1,13 @@
-
 using UnityEngine;
 
 public class WeaponThrowSystem : MonoBehaviour
 {
     [Header("Throw Settings")]
-    [SerializeField] private float throwForce = 8f;
-    [SerializeField] private float throwUpwardForce = 2f;
-    [SerializeField] private float throwTorque = 5f;
+    [SerializeField] private float throwForwardForce = 10f;
+    [SerializeField] private float throwUpwardForce = 4f;
+    [SerializeField] private float throwTorque = 8f;
     [SerializeField] private float despawnTime = 30f;
+    [SerializeField] private float gravity = 2f;
 
     [Header("Pickup Settings")]
     [SerializeField] private float pickupRadius = 2f;
@@ -87,13 +87,27 @@ public class WeaponThrowSystem : MonoBehaviour
             dropComponent.Initialize(weaponID, despawnTime);
         }
 
-        // Apply physics
+        // Apply physics for parabolic trajectory
         Rigidbody rb = droppedWeapon.GetComponent<Rigidbody>();
         if (rb != null)
         {
-            Vector3 force = direction * throwForce + Vector3.up * throwUpwardForce;
-            rb.AddForce(force, ForceMode.Impulse);
-            rb.AddTorque(Random.insideUnitSphere * throwTorque, ForceMode.Impulse);
+            // Usar gravedad custom para un mejor control del arco
+            rb.useGravity = true;
+            rb.mass = 1.5f;
+            rb.linearDamping = 0.5f;
+            rb.angularDamping = 0.8f;
+
+            // Fuerza hacia adelante + arriba para tiro parab�lico
+            Vector3 throwVector = direction.normalized * throwForwardForce + Vector3.up * throwUpwardForce;
+            rb.linearVelocity = throwVector;
+
+            // Rotaci�n aleatoria para efecto visual
+            Vector3 randomTorque = new Vector3(
+                Random.Range(-throwTorque, throwTorque),
+                Random.Range(-throwTorque, throwTorque),
+                Random.Range(-throwTorque, throwTorque)
+            );
+            rb.angularVelocity = randomTorque;
         }
     }
 
@@ -102,8 +116,8 @@ public class WeaponThrowSystem : MonoBehaviour
         switch (weaponID)
         {
             case 1: return pistolDropPrefab;
-            case 2: return minigunDropPrefab;
-            case 3: return shotgunDropPrefab;
+            case 2: return shotgunDropPrefab;
+            case 3: return minigunDropPrefab;
             default: return null;
         }
     }
@@ -120,33 +134,32 @@ public class WeaponThrowSystem : MonoBehaviour
             DroppedWeapon dropped = col.GetComponent<DroppedWeapon>();
             if (dropped != null && dropped.CanPickup)
             {
-                //PickupWeapon(dropped);
+                PickupWeapon(dropped);
                 break;
             }
         }
     }
 
-    //    private void PickupWeapon(DroppedWeapon dropped)
-    //    {
-    //        int weaponID = dropped.WeaponID;
+    private void PickupWeapon(DroppedWeapon dropped)
+    {
+        int weaponID = dropped.WeaponID;
 
-    //        // IMPORTANTE: Re-equipar el arma recogida (forzar equip)
-    //        weaponManager.ForceEquipWeaponByID(weaponID);
+        // IMPORTANTE: Re-equipar el arma recogida (forzar equip)
+        weaponManager.ForceEquipWeaponByID(weaponID);
 
-    //        // Destroy the dropped weapon
-    //        Destroy(dropped.gameObject);
+        // Destroy the dropped weapon
+        Destroy(dropped.gameObject);
 
-    //        // Sync with server - this will broadcast to all clients
-    //        if (playerSync != null && playerController.IsLocalPlayer)
-    //        {
-    //            playerSync.SendWeaponPickup(weaponID);
-    //        }
+        // Sync with server - this will broadcast to all clients
+        if (playerSync != null && playerController.IsLocalPlayer)
+        {
+            playerSync.SendWeaponPickup(weaponID);
+        }
 
-    //        Debug.Log($"[WeaponThrowSystem] Picked up weapon {weaponID}");
-    //    }
-    //}
-
+        Debug.Log($"[WeaponThrowSystem] Picked up weapon {weaponID}");
+    }
 }
+
 // Separate component for dropped weapons
 public class DroppedWeapon : MonoBehaviour
 {
@@ -155,6 +168,9 @@ public class DroppedWeapon : MonoBehaviour
 
     private float despawnTimer;
     private bool initialized = false;
+    private bool hasLanded = false;
+    private float landedTime = 0f;
+    private const float pickupDelay = 0.3f; // Delay antes de poder recoger
 
     public void Initialize(int id, float despawnTime)
     {
@@ -163,30 +179,71 @@ public class DroppedWeapon : MonoBehaviour
         initialized = true;
 
         // Add collider if missing
-        if (GetComponent<Collider>() == null)
+        Collider col = GetComponent<Collider>();
+        if (col == null)
         {
-            BoxCollider col = gameObject.AddComponent<BoxCollider>();
-            col.isTrigger = true;
+            BoxCollider boxCol = gameObject.AddComponent<BoxCollider>();
+            boxCol.isTrigger = false; // NO trigger para que colisione con el suelo
+        }
+        else
+        {
+            col.isTrigger = false;
         }
 
         // Add rigidbody if missing
-        if (GetComponent<Rigidbody>() == null)
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb == null)
         {
-            Rigidbody rb = gameObject.AddComponent<Rigidbody>();
-            rb.mass = 1f;
-            rb.linearDamping = 1f;
-            rb.angularDamping = 0.5f;
+            rb = gameObject.AddComponent<Rigidbody>();
         }
+
+        // Configuraci�n f�sica para tiro parab�lico realista
+        rb.mass = 1.5f;
+        rb.linearDamping = 0.5f;
+        rb.angularDamping = 0.8f;
+        rb.useGravity = true;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        // Add layer for proper collision
+        gameObject.layer = LayerMask.NameToLayer("Default");
     }
 
     void Update()
     {
         if (!initialized) return;
 
+        // Despawn timer
         despawnTimer -= Time.deltaTime;
         if (despawnTimer <= 0)
         {
             Destroy(gameObject);
+            return;
+        }
+
+        // Check if weapon has landed and enable pickup after delay
+        if (!hasLanded)
+        {
+            Rigidbody rb = GetComponent<Rigidbody>();
+            if (rb != null && rb.linearVelocity.magnitude < 0.5f)
+            {
+                hasLanded = true;
+                landedTime = Time.time;
+                CanPickup = false;
+            }
+        }
+        else if (!CanPickup && Time.time - landedTime >= pickupDelay)
+        {
+            CanPickup = true;
+        }
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        // Opcional: A�adir efecto de sonido al impactar
+        if (collision.gameObject.CompareTag("Ground") || collision.gameObject.CompareTag("Wall"))
+        {
+            // Aqu� podr�as reproducir un sonido de impacto
         }
     }
 }
