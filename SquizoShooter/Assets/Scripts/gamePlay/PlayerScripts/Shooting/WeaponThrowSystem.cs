@@ -1,3 +1,4 @@
+
 using UnityEngine;
 
 public class WeaponThrowSystem : MonoBehaviour
@@ -51,8 +52,34 @@ public class WeaponThrowSystem : MonoBehaviour
         Vector3 throwPosition = playerCamera.CameraTransform.position + playerCamera.CameraTransform.forward * 0.5f;
         Vector3 throwDirection = playerCamera.CameraTransform.forward;
 
-        // Spawn dropped weapon
-        GameObject droppedWeapon = Instantiate(dropPrefab, throwPosition, Quaternion.identity);
+        // Spawn dropped weapon locally
+        SpawnDroppedWeapon(weaponID, throwPosition, throwDirection);
+
+        // Desequipar el arma actual dejando al jugador sin arma
+        weaponManager.UnequipCurrentWeapon();
+
+        // Sync with server
+        if (playerSync != null && playerController.IsLocalPlayer)
+        {
+            playerSync.SendWeaponThrow(weaponID, throwPosition, throwDirection);
+        }
+
+        Debug.Log($"[WeaponThrowSystem] Threw weapon {weaponID}, player now has no weapon");
+    }
+
+    // Called by network when remote player throws weapon
+    public void HandleRemoteWeaponThrow(int weaponID, Vector3 position, Vector3 direction)
+    {
+        SpawnDroppedWeapon(weaponID, position, direction);
+        Debug.Log($"[WeaponThrowSystem] Remote weapon throw: ID {weaponID}");
+    }
+
+    private void SpawnDroppedWeapon(int weaponID, Vector3 position, Vector3 direction)
+    {
+        GameObject dropPrefab = GetDropPrefabForWeapon(weaponID);
+        if (dropPrefab == null) return;
+
+        GameObject droppedWeapon = Instantiate(dropPrefab, position, Quaternion.identity);
         DroppedWeapon dropComponent = droppedWeapon.GetComponent<DroppedWeapon>();
 
         if (dropComponent != null)
@@ -64,21 +91,10 @@ public class WeaponThrowSystem : MonoBehaviour
         Rigidbody rb = droppedWeapon.GetComponent<Rigidbody>();
         if (rb != null)
         {
-            Vector3 force = throwDirection * throwForce + Vector3.up * throwUpwardForce;
+            Vector3 force = direction * throwForce + Vector3.up * throwUpwardForce;
             rb.AddForce(force, ForceMode.Impulse);
             rb.AddTorque(Random.insideUnitSphere * throwTorque, ForceMode.Impulse);
         }
-
-        // IMPORTANTE: Desequipar el arma actual dejando al jugador sin arma
-        weaponManager.UnequipCurrentWeapon();
-
-        // Sync with server
-        if (playerSync != null && playerController.IsLocalPlayer)
-        {
-            playerSync.SendWeaponThrow(weaponID, throwPosition, throwDirection);
-        }
-
-        Debug.Log($"[WeaponThrowSystem] Threw weapon {weaponID}, player now has no weapon");
     }
 
     private GameObject GetDropPrefabForWeapon(int weaponID)
@@ -104,32 +120,33 @@ public class WeaponThrowSystem : MonoBehaviour
             DroppedWeapon dropped = col.GetComponent<DroppedWeapon>();
             if (dropped != null && dropped.CanPickup)
             {
-                PickupWeapon(dropped);
+                //PickupWeapon(dropped);
                 break;
             }
         }
     }
 
-    private void PickupWeapon(DroppedWeapon dropped)
-    {
-        int weaponID = dropped.WeaponID;
+    //    private void PickupWeapon(DroppedWeapon dropped)
+    //    {
+    //        int weaponID = dropped.WeaponID;
 
-        // Switch to the picked up weapon
-        weaponManager.SetWeaponByID(weaponID);
+    //        // IMPORTANTE: Re-equipar el arma recogida (forzar equip)
+    //        weaponManager.ForceEquipWeaponByID(weaponID);
 
-        // Destroy the dropped weapon
-        Destroy(dropped.gameObject);
+    //        // Destroy the dropped weapon
+    //        Destroy(dropped.gameObject);
 
-        // Sync with server
-        if (playerSync != null)
-        {
-            playerSync.SendWeaponPickup(weaponID);
-        }
+    //        // Sync with server - this will broadcast to all clients
+    //        if (playerSync != null && playerController.IsLocalPlayer)
+    //        {
+    //            playerSync.SendWeaponPickup(weaponID);
+    //        }
 
-        Debug.Log($"[WeaponThrowSystem] Picked up weapon {weaponID}");
-    }
+    //        Debug.Log($"[WeaponThrowSystem] Picked up weapon {weaponID}");
+    //    }
+    //}
+
 }
-
 // Separate component for dropped weapons
 public class DroppedWeapon : MonoBehaviour
 {

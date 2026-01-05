@@ -7,13 +7,13 @@ public class WeaponManager : MonoBehaviour
     [SerializeField] private List<BaseWeapon> availableWeapons = new List<BaseWeapon>();
 
     private BaseWeapon currentWeapon;
-    private int currentWeaponIndex = 0;
+    private int currentWeaponIndex = -1;
 
     private PlayerController playerController;
     private PlayerSync playerSync;
     private PlayerCamera playerCamera;
 
-    public int CurrentWeaponID => currentWeapon != null ? currentWeapon.WeaponID : 1;
+    public int CurrentWeaponID => currentWeapon != null ? currentWeapon.WeaponID : 0;
 
     public void Initialize(PlayerController pc, PlayerSync sync, PlayerCamera cam)
     {
@@ -48,6 +48,7 @@ public class WeaponManager : MonoBehaviour
         if (weaponIndex == currentWeaponIndex && currentWeapon != null) return;
 
         EquipWeapon(weaponIndex);
+
         if (playerSync != null)
         {
             playerSync.SendWeaponChange(CurrentWeaponID);
@@ -72,7 +73,7 @@ public class WeaponManager : MonoBehaviour
                 playerController.SwitchWeaponVisuals(currentWeapon.WeaponID);
             }
 
-            Debug.Log($"[WeaponManager] Equipped: {currentWeapon.WeaponID}");
+            Debug.Log($"[WeaponManager] Equipped weapon ID {currentWeapon.WeaponID} at index {index}");
         }
     }
 
@@ -81,33 +82,83 @@ public class WeaponManager : MonoBehaviour
         if (currentWeapon != null)
         {
             currentWeapon.SetActive(false);
-            currentWeapon = null;
         }
 
-        currentWeaponIndex = -1; 
-       
+        currentWeapon = null;
+        currentWeaponIndex = -1;
+
         if (playerController != null)
         {
-            playerController.SwitchWeaponVisuals(0); 
+            playerController.SwitchWeaponVisuals(0); // 0 = sin arma
         }
 
         Debug.Log("[WeaponManager] Weapon unequipped - player has no weapon");
     }
-    public void SetWeaponByID(int weaponID)
+
+    public void ForceEquipWeaponByID(int weaponID)
     {
+        Debug.Log($"[WeaponManager] ForceEquipWeaponByID called with ID {weaponID}");
+
         for (int i = 0; i < availableWeapons.Count; i++)
         {
             if (availableWeapons[i] != null && availableWeapons[i].WeaponID == weaponID)
             {
-                if (currentWeapon != null && currentWeapon.WeaponID == weaponID) return;
+                Debug.Log($"[WeaponManager] Found weapon at index {i}");
 
+                // Desactivar arma actual si existe
+                if (currentWeapon != null)
+                {
+                    Debug.Log($"[WeaponManager] Deactivating current weapon ID {currentWeapon.WeaponID}");
+                    currentWeapon.SetActive(false);
+                }
+
+                currentWeaponIndex = i;
+                currentWeapon = availableWeapons[i];
+
+                if (currentWeapon != null)
+                {
+                    currentWeapon.SetActive(true);
+                    Debug.Log($"[WeaponManager] Weapon {currentWeapon.WeaponID} activated. GameObject active: {currentWeapon.gameObject.activeSelf}");
+
+                    if (playerController != null)
+                    {
+                        playerController.SwitchWeaponVisuals(currentWeapon.WeaponID);
+                    }
+                }
+
+                if (playerSync != null && playerController != null && playerController.IsLocalPlayer)
+                {
+                    playerSync.SendWeaponChange(weaponID);
+                }
+
+                Debug.Log($"[WeaponManager] Force equipped weapon ID {weaponID}. Can shoot: {currentWeapon != null}");
+                return;
+            }
+        }
+
+        Debug.LogError($"[WeaponManager] No se encontró arma con ID {weaponID}");
+    }
+
+    public void SetWeaponByID(int weaponID)
+    {
+        if (currentWeapon != null && currentWeapon.WeaponID == weaponID)
+        {
+            return;
+        }
+
+        for (int i = 0; i < availableWeapons.Count; i++)
+        {
+            if (availableWeapons[i] != null && availableWeapons[i].WeaponID == weaponID)
+            {
                 EquipWeapon(i);
                 return;
             }
         }
     }
+
     public void HandleWeaponSwitchInput()
     {
+        // Permitir cambio solo si hay arma equipada
         if (currentWeapon == null) return;
 
         if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchWeapon(0);

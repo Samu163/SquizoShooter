@@ -25,10 +25,20 @@ public class PlayerShooting : MonoBehaviour
 
     public void TryShoot()
     {
-        if (weaponManager == null) return;
+        if (weaponManager == null)
+        {
+            Debug.LogWarning("[PlayerShooting] WeaponManager is null");
+            return;
+        }
 
         BaseWeapon currentWeapon = weaponManager.GetCurrentWeapon();
-        if (currentWeapon == null) return;
+
+        // Simplificado: solo verificar si hay arma actual
+        if (currentWeapon == null)
+        {
+            Debug.Log("[PlayerShooting] No weapon equipped, cannot shoot");
+            return;
+        }
 
         if (currentWeapon.CanShoot())
         {

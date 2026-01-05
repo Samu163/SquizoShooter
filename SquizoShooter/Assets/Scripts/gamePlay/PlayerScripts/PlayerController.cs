@@ -378,4 +378,6 @@ public class PlayerController : MonoBehaviour
     public SlideComponent GetSlideComponent() => slideComponent;
     public PlayerShooting GetPlayerShooting() => playerShooting;
     public WeaponManager GetWeaponManager() => weaponManager;
+
+    public WeaponThrowSystem GetWeaponThrowSystem() => weaponThrowSystem;
 }
