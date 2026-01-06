@@ -82,7 +82,8 @@ public class UDPClient : MonoBehaviour
         RoundWin = 30, 
         MatchWin = 31, 
         RoundReset = 32,
-        PlayerJump = 33
+        PlayerJump = 33,
+        WeaponThrow = 34
 
     }
 
@@ -224,6 +225,10 @@ public class UDPClient : MonoBehaviour
 
                     case MessageType.PlayerJump:
                         HandlePlayerJump(reader);
+                        break;
+
+                    case MessageType.WeaponThrow:
+                        HandleWeaponThrow(reader);
                         break;
 
                     default:
@@ -654,6 +659,72 @@ public class UDPClient : MonoBehaviour
         });
     }
 
+    public void SendWeaponThrow(int weaponID, Vector3 position, Vector3 direction)
+    {
+        if (!isConnected || string.IsNullOrEmpty(clientKey)) return;
+
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.WeaponThrow);
+            writer.Write(clientKey);
+            writer.Write(weaponID);
+            writer.Write(position.x);
+            writer.Write(position.y);
+            writer.Write(position.z);
+            writer.Write(direction.x);
+            writer.Write(direction.y);
+            writer.Write(direction.z);
+
+            SendBinary(ms.ToArray());
+        }
+
+        Debug.Log($"[Client] Sent weapon throw: ID {weaponID}");
+    }
+
+    void HandleWeaponThrow(BinaryReader reader)
+    {
+        string senderKey = reader.ReadString();
+        int weaponID = reader.ReadInt32();
+        float px = reader.ReadSingle();
+        float py = reader.ReadSingle();
+        float pz = reader.ReadSingle();
+        float dx = reader.ReadSingle();
+        float dy = reader.ReadSingle();
+        float dz = reader.ReadSingle();
+
+        Vector3 position = new Vector3(px, py, pz);
+        Vector3 direction = new Vector3(dx, dy, dz);
+
+        if (senderKey == clientKey) return; // Ignorar mi propio throw
+
+        SafeEnqueueMain(() =>
+        {
+            lock (cubesLock)
+            {
+                if (playerCubes.TryGetValue(senderKey, out GameObject cube) && cube != null)
+                {
+                    WeaponThrowSystem throwSystem = cube.GetComponent<WeaponThrowSystem>();
+                    if (throwSystem != null)
+                    {
+                        throwSystem.HandleRemoteWeaponThrow(weaponID, position, direction);
+                        Debug.Log($"[Client] Remote player {senderKey} threw weapon {weaponID}");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[Client] WeaponThrowSystem not found on player {senderKey}");
+                    }
+
+                    // También desequipar el arma del jugador remoto visualmente
+                    WeaponManager wm = cube.GetComponent<WeaponManager>();
+                    if (wm != null)
+                    {
+                        wm.UnequipCurrentWeapon();
+                    }
+                }
+            }
+        });
+    }
     void HandleHealStationData(BinaryReader reader)
     {
         int stationID = reader.ReadInt32();

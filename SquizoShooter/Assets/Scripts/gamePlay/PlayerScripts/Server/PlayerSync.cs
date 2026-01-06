@@ -71,10 +71,9 @@ public class PlayerSync : MonoBehaviour
     }
     public void SendWeaponThrow(int weaponID, Vector3 position, Vector3 direction)
     {
-        // Implementa tu lógica de red aquí
-        if (udpClient != null && udpClient.IsConnected)
+        if (udpClient != null && udpClient.IsConnected && playerController.IsLocalPlayer)
         {
-            //udpClient.SendWeaponThrow(weaponID, position, direction);
+            udpClient.SendWeaponThrow(weaponID, position, direction);
         }
     }
 

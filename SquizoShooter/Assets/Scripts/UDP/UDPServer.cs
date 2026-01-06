@@ -63,7 +63,8 @@ public class UDPServer : MonoBehaviour
         RoundWin = 30, 
         MatchWin = 31,
         RoundReset = 32,
-        PlayerJump = 33
+        PlayerJump = 33,
+        WeaponThrow = 34
     }
 
     public void StartServer()
@@ -180,6 +181,10 @@ public class UDPServer : MonoBehaviour
 
                     case MessageType.PlayerJump:
                         HandlePlayerJump(reader);
+                        break;
+
+                    case MessageType.WeaponThrow:
+                        HandleWeaponThrow(reader);
                         break;
 
                     default:
@@ -331,6 +336,62 @@ public class UDPServer : MonoBehaviour
         }
 
         BroadcastGameStart(rounds);
+    }
+
+    void HandleWeaponThrow(BinaryReader reader)
+    {
+        string senderKey = reader.ReadString();
+        int weaponID = reader.ReadInt32();
+        float px = reader.ReadSingle();
+        float py = reader.ReadSingle();
+        float pz = reader.ReadSingle();
+        float dx = reader.ReadSingle();
+        float dy = reader.ReadSingle();
+        float dz = reader.ReadSingle();
+
+        Debug.Log($"[Server] {senderKey} threw weapon {weaponID} at position ({px}, {py}, {pz})");
+
+        // Actualizar el estado del jugador - ahora no tiene arma (weaponID = 0)
+        lock (clientsLock)
+        {
+            playerWeapons[senderKey] = 0; // 0 = sin arma
+        }
+
+        // Broadcast to all clients
+        BroadcastWeaponThrow(senderKey, weaponID, px, py, pz, dx, dy, dz);
+    }
+
+    void BroadcastWeaponThrow(string senderKey, int weaponID, float px, float py, float pz, float dx, float dy, float dz)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.WeaponThrow);
+            writer.Write(senderKey);
+            writer.Write(weaponID);
+            writer.Write(px);
+            writer.Write(py);
+            writer.Write(pz);
+            writer.Write(dx);
+            writer.Write(dy);
+            writer.Write(dz);
+
+            byte[] data = ms.ToArray();
+
+            List<EndPoint> snapshot;
+            lock (clientsLock)
+            {
+                snapshot = new List<EndPoint>(connectedClients.Values);
+            }
+
+            Debug.Log($"[Server] Broadcasting weapon throw from {senderKey} to {snapshot.Count} clients");
+
+            foreach (var ep in snapshot)
+            {
+                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
+                catch (Exception e) { Debug.LogWarning("[Server] Error enviando WEAPON_THROW: " + e.Message); }
+            }
+        }
     }
     void BroadcastLobbyState()
     {
