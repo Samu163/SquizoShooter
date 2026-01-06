@@ -57,10 +57,17 @@ public class WeaponStation : MonoBehaviour
 
         if (player != null && player.IsLocalPlayer && udpClient != null)
         {
-
             enCooldownLocal = true;
 
+            // Notify server about weapon pickup
             udpClient.SendWeaponRequest(weaponStationID, weaponID);
+
+            // NEW: reload all weapons locally for immediate effect
+            var wm = player.GetComponentInChildren<WeaponManager>();
+            if (wm != null)
+            {
+                wm.ReloadAllWeaponsAmmo();
+            }
         }
     }
 

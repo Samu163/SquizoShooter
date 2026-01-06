@@ -24,7 +24,7 @@ public abstract class BaseWeapon : MonoBehaviour
     public int WeaponID { get; protected set; }
 
     public virtual void Initialize()
-    {     
+    {
     }
 
     public virtual bool CanShoot()
@@ -39,7 +39,7 @@ public abstract class BaseWeapon : MonoBehaviour
         Vector3 targetPoint = shootOrigin.position + (shootOrigin.forward * shootRange);
         if (Physics.Raycast(shootOrigin.position, shootOrigin.forward, out RaycastHit hit, shootRange))
         {
-            if (!hit.collider.isTrigger) 
+            if (!hit.collider.isTrigger)
                 targetPoint = hit.point;
         }
 
@@ -50,6 +50,7 @@ public abstract class BaseWeapon : MonoBehaviour
 
         OnShootLogic(shootOrigin, udpClient, myKey);
     }
+
     public virtual void SimulateShootVisualsForNetwork()
     {
         if (firePoint == null) return;
@@ -65,6 +66,7 @@ public abstract class BaseWeapon : MonoBehaviour
 
         CreateTrail(start, end);
     }
+
     protected void CreateTrail(Vector3 start, Vector3 end)
     {
         if (BulletTrailPool.Instance != null)
@@ -99,4 +101,8 @@ public abstract class BaseWeapon : MonoBehaviour
             UiController.Instance.ShowHitMarker();
         }
     }
+
+    // NEW: ammo getters so derived weapons can override and HUD can query
+    public virtual int GetCurrentAmmo() => 0;
+    public virtual int GetMaxAmmo() => 0;
 }

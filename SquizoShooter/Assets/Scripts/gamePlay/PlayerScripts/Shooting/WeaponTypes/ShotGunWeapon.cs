@@ -6,6 +6,12 @@ public class ShotgunWeapon : BaseWeapon
     [SerializeField] private int pelletCount = 8;  
     [SerializeField] private float spreadAngle = 6f;
 
+    [Header("Ammo")]
+    [SerializeField] private int maxAmmo = 8;
+    [SerializeField] private int currentAmmo;
+
+    private PlayerController owner;
+
     void Awake()
     {
         WeaponID = 3;
@@ -13,12 +19,43 @@ public class ShotgunWeapon : BaseWeapon
         recoilPitch = 8f;
         recoilYaw = 2.2f;
         recoilBack = 0.35f;
-        shootDamage = 9f;      
+        shootDamage = 9f;
+
+        currentAmmo = maxAmmo;
+        owner = GetComponentInParent<PlayerController>();
+        UpdateAmmoUI();
+    }
+
+    void OnEnable()
+    {
+        if (owner == null) owner = GetComponentInParent<PlayerController>();
+        UpdateAmmoUI();
+    }
+
+    public override bool CanShoot()
+    {
+        return base.CanShoot() && currentAmmo > 0;
+    }
+
+    public void ReloadAllAmmo()
+    {
+        currentAmmo = maxAmmo;
+        UpdateAmmoUI();
     }
 
     public override void PerformShoot(Transform shootOrigin, UDPClient udpClient, string myKey)
     {
+        if (!CanShoot())
+        {
+            UpdateAmmoUI();
+            return;
+        }
+
         lastFireTime = Time.time;
+        // Consume 1 shell per trigger pull (not per pellet)
+        currentAmmo = Mathf.Max(0, currentAmmo - 1);
+        UpdateAmmoUI();
+
         for (int i = 0; i < pelletCount; i++)
         {
             Vector3 direction = ApplySpread(shootOrigin.forward, spreadAngle);
@@ -74,6 +111,7 @@ public class ShotgunWeapon : BaseWeapon
 
     protected override void OnShootLogic(Transform origin, UDPClient client, string myKey)
     {
+        // Shotgun uses PerformShoot; no per-bullet logic here
     }
 
     Vector3 ApplySpread(Vector3 forward, float angleDeg)
@@ -82,4 +120,14 @@ public class ShotgunWeapon : BaseWeapon
         float y = Random.Range(-angleDeg, angleDeg); 
         return Quaternion.Euler(x, y, 0f) * forward;
     }
+
+    private void UpdateAmmoUI()
+    {
+        if (AmmoBarUI.instance == null) return;
+        if (owner != null && !owner.IsLocalPlayer) return;
+        AmmoBarUI.instance.UpdateUI(currentAmmo, maxAmmo);
+    }
+
+    public override int GetCurrentAmmo() => currentAmmo;
+    public override int GetMaxAmmo() => maxAmmo;
 }

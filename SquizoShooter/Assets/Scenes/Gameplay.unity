@@ -3003,6 +3003,8 @@ MonoBehaviour:
   bulletTrailPrefab: {fileID: 0}
   pelletCount: 6
   spreadAngle: 6
+  maxAmmo: 8
+  currentAmmo: 0
 --- !u!1 &558589861
 GameObject:
   m_ObjectHideFlags: 0
@@ -9191,6 +9193,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 8514080719432748846, guid: 905d38165b41e9a4ab278da2b558bcb9, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -9244,7 +9250,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AmmoBarUI
   imagenRelleno: {fileID: 1663971219}
-  textoSalud: {fileID: 1663971218}
+  textoAmmo: {fileID: 1663971218}
+  autoBindToLocalPlayer: 1
 --- !u!65 &1669157711
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -15003,6 +15010,8 @@ MonoBehaviour:
   bulletTrailPrefab: {fileID: 0}
   pelletCount: 6
   spreadAngle: 6
+  maxAmmo: 8
+  currentAmmo: 0
 --- !u!114 &6567391175886104953
 MonoBehaviour:
   m_ObjectHideFlags: 0

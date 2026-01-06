@@ -168,10 +168,10 @@ public class PlayerController : MonoBehaviour
             playerCamera.EnableCameraIfNeeded();
             wallJumpComponent.DetectWallRun();
             playerMovement.HandleMovement(wallJumpComponent, slideComponent);
-            if (weaponManager != null)
-            {
-                weaponManager.HandleWeaponSwitchInput();
-            }
+            //if (weaponManager != null)
+            //{
+            //    weaponManager.HandleWeaponSwitchInput();
+            //}
             playerSync.SendPositionToServer();
             playerSync.SendRotationToServer();
             playerSync.SendPlayerDataToServer();

@@ -30,7 +30,6 @@ public class WeaponManager : MonoBehaviour
             }
         }
 
-        // Equip first weapon
         if (availableWeapons.Count > 0)
         {
             EquipWeapon(0);
@@ -45,7 +44,11 @@ public class WeaponManager : MonoBehaviour
     public void SwitchWeapon(int weaponIndex)
     {
         if (weaponIndex < 0 || weaponIndex >= availableWeapons.Count) return;
-        if (weaponIndex == currentWeaponIndex && currentWeapon != null) return;
+        if (weaponIndex == currentWeaponIndex && currentWeapon != null)
+        {
+            PushAmmoToHUD();
+            return;
+        }
 
         EquipWeapon(weaponIndex);
 
@@ -73,8 +76,17 @@ public class WeaponManager : MonoBehaviour
                 playerController.SwitchWeaponVisuals(currentWeapon.WeaponID);
             }
 
-            Debug.Log($"[WeaponManager] Equipped weapon ID {currentWeapon.WeaponID} at index {index}");
+            PushAmmoToHUD();
         }
+    }
+
+    private void PushAmmoToHUD()
+    {
+        if (AmmoBarUI.instance == null) return;
+        if (playerController != null && !playerController.IsLocalPlayer) return;
+        if (currentWeapon == null) return;
+
+        AmmoBarUI.instance.UpdateUI(currentWeapon.GetCurrentAmmo(), currentWeapon.GetMaxAmmo());
     }
 
     public void UnequipCurrentWeapon()
@@ -89,7 +101,12 @@ public class WeaponManager : MonoBehaviour
 
         if (playerController != null)
         {
-            playerController.SwitchWeaponVisuals(0); // 0 = sin arma
+            playerController.SwitchWeaponVisuals(0);
+        }
+
+        if (AmmoBarUI.instance != null)
+        {
+            AmmoBarUI.instance.UpdateUI(0, 1);
         }
 
         Debug.Log("[WeaponManager] Weapon unequipped - player has no weapon");
@@ -97,18 +114,18 @@ public class WeaponManager : MonoBehaviour
 
     public void ForceEquipWeaponByID(int weaponID)
     {
-        Debug.Log($"[WeaponManager] ForceEquipWeaponByID called with ID {weaponID}");
+        if (currentWeapon != null && currentWeapon.WeaponID == weaponID)
+        {
+            PushAmmoToHUD();
+            return;
+        }
 
         for (int i = 0; i < availableWeapons.Count; i++)
         {
             if (availableWeapons[i] != null && availableWeapons[i].WeaponID == weaponID)
             {
-                Debug.Log($"[WeaponManager] Found weapon at index {i}");
-
-                // Desactivar arma actual si existe
                 if (currentWeapon != null)
                 {
-                    Debug.Log($"[WeaponManager] Deactivating current weapon ID {currentWeapon.WeaponID}");
                     currentWeapon.SetActive(false);
                 }
 
@@ -118,12 +135,13 @@ public class WeaponManager : MonoBehaviour
                 if (currentWeapon != null)
                 {
                     currentWeapon.SetActive(true);
-                    Debug.Log($"[WeaponManager] Weapon {currentWeapon.WeaponID} activated. GameObject active: {currentWeapon.gameObject.activeSelf}");
 
                     if (playerController != null)
                     {
                         playerController.SwitchWeaponVisuals(currentWeapon.WeaponID);
                     }
+
+                    PushAmmoToHUD();
                 }
 
                 if (playerSync != null && playerController != null && playerController.IsLocalPlayer)
@@ -131,7 +149,6 @@ public class WeaponManager : MonoBehaviour
                     playerSync.SendWeaponChange(weaponID);
                 }
 
-                Debug.Log($"[WeaponManager] Force equipped weapon ID {weaponID}. Can shoot: {currentWeapon != null}");
                 return;
             }
         }
@@ -143,6 +160,7 @@ public class WeaponManager : MonoBehaviour
     {
         if (currentWeapon != null && currentWeapon.WeaponID == weaponID)
         {
+            PushAmmoToHUD();
             return;
         }
 
@@ -156,13 +174,24 @@ public class WeaponManager : MonoBehaviour
         }
     }
 
-    public void HandleWeaponSwitchInput()
+    // NEW: reload all owned weapons and refresh HUD
+    public void ReloadAllWeaponsAmmo()
     {
-        // Permitir cambio solo si hay arma equipada
-        if (currentWeapon == null) return;
+        foreach (var weapon in availableWeapons)
+        {
+            if (weapon == null) continue;
 
-        if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchWeapon(0);
-        else if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchWeapon(1);
-        else if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchWeapon(2);
+            if (weapon is PistolWeapon pistol)
+                pistol.ReloadAllAmmo();
+            else if (weapon is MiniGunWeapon minigun)
+                minigun.ReloadAllAmmo();
+            else if (weapon is ShotgunWeapon shotgun)
+                shotgun.ReloadAllAmmo();
+        }
+
+        if (AmmoBarUI.instance != null && currentWeapon != null)
+        {
+            AmmoBarUI.instance.UpdateUI(currentWeapon.GetCurrentAmmo(), currentWeapon.GetMaxAmmo());
+        }
     }
 }
