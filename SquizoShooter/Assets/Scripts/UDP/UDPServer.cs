@@ -108,7 +108,7 @@ public class UDPServer : MonoBehaviour
                 {
                     case MessageType.Handshake: HandleHandshake(remote); break;
                     case MessageType.Ping: HandlePing(reader); break;
-                    case MessageType.Move: HandleMove(reader); break;
+                    case MessageType.Move: HandleMove(reader, remote); break;
                     case MessageType.Rotate: HandleRotate(reader); break;
                     case MessageType.PlayerData: HandlePlayerData(reader); break;
                     case MessageType.ShootAnim: HandleShootAnim(reader); break;
@@ -191,34 +191,42 @@ public class UDPServer : MonoBehaviour
         }
     }
 
-    void HandleMove(BinaryReader reader)
+    void HandleMove(BinaryReader reader, EndPoint remote)
     {
         string key = reader.ReadString();
-        UpdateClientTimestamp(key);
-        float x = reader.ReadSingle(); float y = reader.ReadSingle(); float z = reader.ReadSingle();
+        int seq = reader.ReadInt32();
+        float x = reader.ReadSingle();
+        float y = reader.ReadSingle();
+        float z = reader.ReadSingle();
         Vector3 newPos = new Vector3(x, y, z);
+
+        UpdateClientTimestamp(key);
 
         lock (clientsLock)
         {
             if (connectedProxies.TryGetValue(key, out ClientProxy client))
-                client.Position = newPos;
+                client.Position = newPos; // Guardar última conocida
         }
-        BroadcastMove(key, newPos);
-    }
 
+        BroadcastMove(key, newPos, seq); 
+    }
     void HandleRotate(BinaryReader reader)
     {
         string key = reader.ReadString();
-        UpdateClientTimestamp(key);
-        float x = reader.ReadSingle(); float y = reader.ReadSingle(); float z = reader.ReadSingle();
+        int seq = reader.ReadInt32();
+        float x = reader.ReadSingle();
+        float y = reader.ReadSingle();
+        float z = reader.ReadSingle();
         Vector3 newRot = new Vector3(x, y, z);
+
+        UpdateClientTimestamp(key);
 
         lock (clientsLock)
         {
             if (connectedProxies.TryGetValue(key, out ClientProxy client))
                 client.Rotation = newRot;
         }
-        BroadcastRotate(key, newRot);
+        BroadcastRotate(key, newRot, seq);
     }
 
     void HandlePlayerData(BinaryReader reader)
@@ -643,32 +651,30 @@ public class UDPServer : MonoBehaviour
             BroadcastData(m.ToArray());
         }
     }
-    void BroadcastMove(string k, Vector3 p)
+    void BroadcastMove(string senderKey, Vector3 pos, int seq)
     {
-        using (MemoryStream m = new MemoryStream())
-        using (BinaryWriter w = new BinaryWriter(m))
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
         {
-            w.Write((byte)MessageType.Move);
-            w.Write(k);
-            w.Write(p.x);
-            w.Write(p.y);
-            w.Write(p.z);
-
-            BroadcastData(m.ToArray());
+            writer.Write((byte)MessageType.Move);
+            writer.Write(senderKey);
+            writer.Write(seq); 
+            writer.Write(pos.x);
+            writer.Write(pos.y);
+            writer.Write(pos.z);
+            BroadcastData(ms.ToArray());
         }
     }
-    void BroadcastRotate(string k, Vector3 r)
+    void BroadcastRotate(string senderKey, Vector3 rot, int seq) 
     {
-        using (MemoryStream m = new MemoryStream())
-        using (BinaryWriter w = new BinaryWriter(m))
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
         {
-            w.Write((byte)MessageType.Rotate);
-            w.Write(k);
-            w.Write(r.x);
-            w.Write(r.y);
-            w.Write(r.z);
-
-            BroadcastData(m.ToArray());
+            writer.Write((byte)MessageType.Rotate);
+            writer.Write(senderKey);
+            writer.Write(seq); 
+            writer.Write(rot.x);
+            writer.Write(rot.y);
+            writer.Write(rot.z);
+            BroadcastData(ms.ToArray());
         }
     }
     void BroadcastPlayerHealth(string k, float h)

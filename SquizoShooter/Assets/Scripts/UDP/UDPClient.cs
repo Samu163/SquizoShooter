@@ -363,7 +363,7 @@ public class UDPClient : MonoBehaviour
             player.enabled = true;
             foreach (var item in AllItems) item.AssignCamera(player.GetPlayerCamera().playerCamera);
         }
-        SendCubeMovement(spawnPos);
+        SendCubeMovement(spawnPos, 0);
     }
 
     void HandleRoundReset(BinaryReader reader)
@@ -580,14 +580,13 @@ public class UDPClient : MonoBehaviour
     void HandleMove(BinaryReader reader)
     {
         string key = reader.ReadString();
+        int seq = reader.ReadInt32(); 
         float x = reader.ReadSingle();
         float y = reader.ReadSingle();
         float z = reader.ReadSingle();
-
         Vector3 newPos = new Vector3(x, y, z);
 
-        if (key == clientKey)
-            return;
+        if (key == clientKey) return;
 
         SafeEnqueueMain(() =>
         {
@@ -596,24 +595,16 @@ public class UDPClient : MonoBehaviour
                 if (!playerCubes.ContainsKey(key))
                 {
                     InstantiateRemoteCube(key, newPos);
-
-                    if (uiController != null)
-                        uiController.ShowPlayerJoined();
+                    if (uiController != null) uiController.ShowPlayerJoined();
                 }
                 else
                 {
                     GameObject cube = playerCubes[key];
                     if (cube != null)
                     {
-                        PlayerController move = cube.GetComponent<PlayerController>();
-                        if (move != null)
-                        {
-                            move.UpdatePosition(newPos);
-                        }
-                        else
-                        {
-                            cube.transform.position = newPos;
-                        }
+                        var sync = cube.GetComponent<PlayerSync>();
+                        if (sync) sync.OnReceivePosition(newPos, seq);
+                        else cube.transform.position = newPos; 
                     }
                 }
             }
@@ -623,10 +614,10 @@ public class UDPClient : MonoBehaviour
     void HandleRotate(BinaryReader reader)
     {
         string key = reader.ReadString();
+        int seq = reader.ReadInt32(); 
         float x = reader.ReadSingle();
         float y = reader.ReadSingle();
         float z = reader.ReadSingle();
-
         Vector3 newRot = new Vector3(x, y, z);
 
         if (key == clientKey) return;
@@ -637,18 +628,8 @@ public class UDPClient : MonoBehaviour
             {
                 if (playerCubes.TryGetValue(key, out GameObject cube))
                 {
-                    if (cube != null)
-                    {
-                        PlayerController pc = cube.GetComponent<PlayerController>();
-                        if (pc != null)
-                        {
-                            pc.UpdateRotation(newRot);
-                        }
-                        else
-                        {
-                            cube.transform.rotation = Quaternion.Euler(0, newRot.y, 0);
-                        }
-                    }
+                    var sync = cube.GetComponent<PlayerSync>();
+                    if (sync) sync.OnReceiveRotation(newRot, seq);
                 }
             }
         });
@@ -901,49 +882,33 @@ public class UDPClient : MonoBehaviour
             SendBinary(ms.ToArray());
         }
     }
-    public void SendCubeMovement(Vector3 position)
+    public void SendCubeMovement(Vector3 position, int seq)
     {
         if (!isConnected || clientSocket == null) return;
-        if (string.IsNullOrEmpty(clientKey))
-        {
-            Debug.LogWarning("[Client] No tengo clientKey todavía");
-            return;
-        }
-
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
         {
             writer.Write((byte)MessageType.Move);
             writer.Write(clientKey);
+            writer.Write(seq); // ENVIAR SECUENCIA
             writer.Write(position.x);
             writer.Write(position.y);
             writer.Write(position.z);
-
-            byte[] data = ms.ToArray();
-            SendBinary(data);
+            SendBinary(ms.ToArray());
         }
     }
 
-    public void SendCubeRotation(Vector3 rotation)
+    public void SendCubeRotation(Vector3 rotation, int seq)
     {
         if (!isConnected || clientSocket == null) return;
-        if (string.IsNullOrEmpty(clientKey))
-        {
-            Debug.LogWarning("[Client] No tengo clientKey todavía");
-            return;
-        }
-
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
         {
             writer.Write((byte)MessageType.Rotate);
             writer.Write(clientKey);
+            writer.Write(seq); // ENVIAR SECUENCIA
             writer.Write(rotation.x);
             writer.Write(rotation.y);
             writer.Write(rotation.z);
-
-            byte[] data = ms.ToArray();
-            SendBinary(data);
+            SendBinary(ms.ToArray());
         }
     }
 
