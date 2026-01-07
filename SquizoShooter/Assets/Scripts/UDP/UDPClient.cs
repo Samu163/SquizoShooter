@@ -350,6 +350,7 @@ public class UDPClient : MonoBehaviour
             string myName = "";
             foreach (var p in CurrentLobbyPlayers) if (p.Key == clientKey) myName = p.Name;
             nameTag.SetText(myName, Color.green);
+            nameTag.gameObject.SetActive(false);
         }
         lock (cubesLock)
         {
@@ -368,32 +369,43 @@ public class UDPClient : MonoBehaviour
 
     void HandleRoundReset(BinaryReader reader)
     {
-        int offset = reader.ReadInt32(); 
+        int offset = reader.ReadInt32();
 
         SafeEnqueueMain(() => {
-            CurrentRoundOffset = offset; 
+            CurrentRoundOffset = offset;
 
             if (RoundScoreUI.Instance) RoundScoreUI.Instance.HideRoundMessage();
             if (uiController) uiController.HideDeathScreen();
 
             lock (cubesLock)
             {
-                if (playerCubes.TryGetValue(clientKey, out GameObject myCube))
+                foreach (var kvp in playerCubes)
                 {
-                    PlayerController pc = myCube.GetComponent<PlayerController>();
-                    if (pc)
+                    string pKey = kvp.Key;
+                    GameObject pObj = kvp.Value;
+
+                    if (pKey == clientKey)
                     {
-                        pc.Respawn(); 
-                        pc.SetAsLocalPlayer(true);
-                        if (uiController) uiController.EnableGameHUD();
+                        var pc = pObj.GetComponent<PlayerController>();
+                        if (pc) pc.Respawn();
+                    }
+                    else
+                    {
+                        var sync = pObj.GetComponent<PlayerSync>();
+                        if (sync) sync.ForceRemoteReset();
+
+                        var pc = pObj.GetComponent<PlayerController>();
+                        if (pc) pc.UpdateHealth(100f);
                     }
                 }
-                else
+
+                if (!playerCubes.ContainsKey(clientKey))
                 {
-                    SpawnMyPlayerNow(); 
-                    if (uiController) uiController.EnableGameHUD();
+                    SpawnMyPlayerNow();
                 }
             }
+
+            if (uiController) uiController.EnableGameHUD();
         });
     }
     void HandleLobbyData(BinaryReader reader)

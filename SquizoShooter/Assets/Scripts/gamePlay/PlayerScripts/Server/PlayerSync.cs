@@ -7,7 +7,7 @@ public class PlayerSync : MonoBehaviour
     private UDPClient udpClient;
 
     private Vector3 lastSentPosition;
-    private Vector3 lastSentRotation; 
+    private Vector3 lastSentRotation;
     private float lastSentHealth;
     private int localSequenceNumber = 0;
 
@@ -20,14 +20,14 @@ public class PlayerSync : MonoBehaviour
     public struct StateSnapshot
     {
         public Vector3 position;
-        public Vector3 rotation; 
+        public Vector3 rotation;
         public float timestamp;
         public int sequence;
     }
 
     private List<StateSnapshot> stateBuffer = new List<StateSnapshot>();
     private int lastReceivedSequence = -1;
-    private float interpolationDelay = 0.15f; // Retraso para suavizar (150ms)
+    private float interpolationDelay = 0.15f; 
 
     private Vector3 latestRemotePos;
     private Vector3 latestRemoteRot;
@@ -36,7 +36,6 @@ public class PlayerSync : MonoBehaviour
     {
         playerController = pc;
         udpClient = FindObjectOfType<UDPClient>();
-
         latestRemotePos = transform.position;
         latestRemoteRot = transform.eulerAngles;
     }
@@ -89,6 +88,7 @@ public class PlayerSync : MonoBehaviour
             float t = (renderTime - fromNode.timestamp) / timeDiff;
 
             transform.position = Vector3.Lerp(fromNode.position, toNode.position, t);
+
             float yaw = Mathf.LerpAngle(fromNode.rotation.y, toNode.rotation.y, t);
             transform.rotation = Quaternion.Euler(0, yaw, 0);
 
@@ -102,27 +102,23 @@ public class PlayerSync : MonoBehaviour
             {
                 var last = stateBuffer[stateBuffer.Count - 1];
                 transform.position = Vector3.Lerp(transform.position, last.position, Time.deltaTime * 5f);
-
-                Quaternion targetRot = Quaternion.Euler(0, last.rotation.y, 0);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 5f);
             }
         }
     }
+
     public void OnReceivePosition(Vector3 newPos, int seq)
     {
-        if (seq < lastReceivedSequence) return;
+        if (seq <= lastReceivedSequence) return;
         lastReceivedSequence = seq;
-
-        latestRemotePos = newPos; 
-
+        latestRemotePos = newPos;
         AddToBuffer(latestRemotePos, latestRemoteRot, seq);
     }
 
     public void OnReceiveRotation(Vector3 newRot, int seq)
     {
-        latestRemoteRot = newRot; 
-
-        AddToBuffer(latestRemotePos, latestRemoteRot, seq > lastReceivedSequence ? seq : lastReceivedSequence);
+        int safeSeq = (seq > lastReceivedSequence) ? seq : lastReceivedSequence;
+        latestRemoteRot = newRot;
+        AddToBuffer(latestRemotePos, latestRemoteRot, safeSeq);
     }
 
     void AddToBuffer(Vector3 pos, Vector3 rot, int seq)
@@ -136,7 +132,7 @@ public class PlayerSync : MonoBehaviour
         });
     }
 
-    // --- ENVÍO (LOCAL) ---
+    // --- ENVÍO ---
     public void SendPositionToServer()
     {
         if (udpClient && udpClient.IsConnected)
@@ -156,7 +152,7 @@ public class PlayerSync : MonoBehaviour
         {
             float yaw = playerController.transform.eulerAngles.y;
             float pitch = 0f;
-            if (playerController.GetPlayerCamera() != null)
+            if (playerController.GetPlayerCamera())
                 pitch = playerController.GetPlayerCamera().CameraTransform.eulerAngles.x;
 
             Vector3 currentRotation = new Vector3(pitch, yaw, 0);
@@ -184,21 +180,27 @@ public class PlayerSync : MonoBehaviour
 
     public void SendWeaponChange(int id) { if (udpClient) udpClient.SendWeaponChange(id); }
     public void SendWeaponThrow(int id, Vector3 p, Vector3 d) { if (udpClient) udpClient.SendWeaponThrow(id, p, d); }
-    public void SendWeaponPickup(int id) { /* Stub */ }
+    public void SendWeaponPickup(int id) { }
 
-    public void ResetSync(Vector3 pos, float health)
+    // --- RESET ---
+    public void ResetSync(Vector3 spawnPos, float health)
     {
-        stateBuffer.Clear();
         localSequenceNumber = 0;
-        lastReceivedSequence = -1;
-
-        latestRemotePos = pos;
+        lastSentPosition = Vector3.zero;
 
         if (udpClient && udpClient.IsConnected)
         {
-            udpClient.SendCubeMovement(pos, 0);
+            udpClient.SendCubeMovement(spawnPos, 0);
             udpClient.SendPlayerHealth(health);
         }
+    }
+
+    // --- NUEVO PARA ARREGLAR RONDA 2 ---
+    public void ForceRemoteReset()
+    {
+        stateBuffer.Clear();
+        lastReceivedSequence = -1;
+        latestRemotePos = transform.position;
     }
 
     public UDPClient GetUDPClient() => udpClient;

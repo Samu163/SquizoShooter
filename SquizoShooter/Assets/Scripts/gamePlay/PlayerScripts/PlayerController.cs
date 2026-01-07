@@ -249,17 +249,14 @@ public class PlayerController : MonoBehaviour
         if (lifeComponent) lifeComponent.ResetHealth();
 
         Vector3 spawnPos = Vector3.zero;
-
         if (GameplayManager.Instance != null)
         {
             UDPClient client = FindObjectOfType<UDPClient>();
             int finalIndex = 0;
-
             if (client != null)
             {
                 finalIndex = client.MySpawnIndex + client.CurrentRoundOffset;
             }
-
             spawnPos = GameplayManager.Instance.GetSpawnPosition(finalIndex);
         }
         else
@@ -282,6 +279,14 @@ public class PlayerController : MonoBehaviour
 
         if (playerSync && lifeComponent)
             playerSync.ResetSync(spawnPos, lifeComponent.Health);
+
+        if (weaponManager != null)
+        {
+            weaponManager.ReloadAllWeaponsAmmo();
+            weaponManager.SetWeaponByID(1);
+            if (playerSync) playerSync.SendWeaponChange(1);
+            if (playerVisuals) playerVisuals.SetEquippedWeapon(1);
+        }
     }
 
     public void PlayShootAnimation()
