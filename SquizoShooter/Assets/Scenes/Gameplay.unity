@@ -5985,7 +5985,6 @@ MonoBehaviour:
   gameHUD: {fileID: 592767705}
   lobbyCamera: {fileID: 1663954951}
   spectatorObject: {fileID: 1886775157}
-  spectatorCamera: {fileID: 14129589}
 --- !u!65 &1064490143
 BoxCollider:
   m_ObjectHideFlags: 0

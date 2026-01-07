@@ -58,6 +58,8 @@ MonoBehaviour:
   bulletTrailPrefab: {fileID: 875984996699200094, guid: 15ac0802e71bb2e48a6152dc970919ec, type: 3}
   pelletCount: 6
   spreadAngle: 6
+  maxAmmo: 8
+  currentAmmo: 0
 --- !u!1 &504639902080561683
 GameObject:
   m_ObjectHideFlags: 0
@@ -1133,16 +1135,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2b935ca7c4950a647a61239a2e83e135, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WeaponThrowSystem
-  throwForce: 8
+  throwForwardForce: 10
   throwUpwardForce: 2
   throwTorque: 5
   despawnTime: 30
+  gravity: 2
   pickupRadius: 2
   playerLayer:
     serializedVersion: 2
     m_Bits: 0
   pistolDropPrefab: {fileID: 4665942579900937197, guid: d49b1c6a3f966534aae0936a7da31fb4, type: 3}
-  minigunDropPrefab: {fileID: 4930094434945823423, guid: 2cdce1067d4c27e478ac7381a8c520fc, type: 3}
+  minigunDropPrefab: {fileID: 1941148237374477703, guid: b07c9b002deb37f40b13a536647ce61a, type: 3}
   shotgunDropPrefab: {fileID: 3202817893664463616, guid: 8b1b57c822a71a147a6bf405a4042c85, type: 3}
 --- !u!114 &5972932948204072391
 MonoBehaviour:
@@ -1468,6 +1471,8 @@ MonoBehaviour:
   weaponModel: {fileID: 2107831988451578880}
   firePoint: {fileID: 1283842658567179578}
   bulletTrailPrefab: {fileID: 875984996699200094, guid: 15ac0802e71bb2e48a6152dc970919ec, type: 3}
+  maxAmmo: 120
+  currentAmmo: 0
 --- !u!1001 &5375305880243546507
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1770,6 +1775,8 @@ MonoBehaviour:
   weaponModel: {fileID: 2051243143252198227}
   firePoint: {fileID: 6724269754708618190}
   bulletTrailPrefab: {fileID: 875984996699200094, guid: 15ac0802e71bb2e48a6152dc970919ec, type: 3}
+  maxAmmo: 12
+  currentAmmo: 0
 --- !u!1 &7060150138804878218 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 69512df507be155439a3dff17f385906, type: 3}
