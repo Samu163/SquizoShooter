@@ -4,10 +4,16 @@ using TMPro;
 using System.Collections;
 using System.Text;
 
+
+public class NetworkStats
+{
+    public int packetsSent = 0;
+    public int packetsReceived = 0;
+}
 public class UiController : MonoBehaviour
 {
     public static UiController Instance { get; private set; }
-    
+
     [Header("UI References")]
     public GameObject pauseMenu;
     public Button respawnButton;
@@ -15,7 +21,7 @@ public class UiController : MonoBehaviour
     public TextMeshProUGUI notificationText;
 
     [Header("Hitmarker")]
-    public GameObject hitMarkerImage; 
+    public GameObject hitMarkerImage;
     public float hitMarkerDuration = 0.1f;
     private Coroutine hitMarkerCoroutine;
 
@@ -34,49 +40,30 @@ public class UiController : MonoBehaviour
 
     [Header("Spectator")]
     public GameObject spectatorObject;
-    public GameObject spectatorCamera;
 
     private bool isPaused = false;
     private bool isDebugPanelVisible = false;
     private Coroutine hideNotificationCoroutine;
     private Coroutine debugUpdateCoroutine;
-
     private PlayerController cachedLocalPlayer;
 
-     
+    private NetworkStats networkStats = new NetworkStats();
 
     void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-            return;
-        }
+        if (Instance == null) { Instance = this; }
+        else { Destroy(gameObject); return; }
     }
 
     void Start()
     {
-        if (lobbyCamera) lobbyCamera.SetActive(true);      
-        if (spectatorCamera) spectatorCamera.SetActive(false);
-        if (pauseMenu != null)
-            pauseMenu.SetActive(false);
+        if (lobbyCamera) lobbyCamera.SetActive(true);
+        if (pauseMenu != null) pauseMenu.SetActive(false);
+        if (networkDebugPanel != null) networkDebugPanel.SetActive(false);
 
-        if (networkDebugPanel != null)
-            networkDebugPanel.SetActive(false);
+        if (respawnButton != null) respawnButton.onClick.AddListener(OnRespawnClicked);
+        if (quitButton != null) quitButton.onClick.AddListener(OnQuitClicked);
 
-        if (respawnButton != null)
-        {
-            respawnButton.onClick.AddListener(OnRespawnClicked);
-        }
-
-        if (quitButton != null)
-        {
-            quitButton.onClick.AddListener(OnQuitClicked);
-        }
         if (hitMarkerImage != null) hitMarkerImage.SetActive(false);
         if (gameHUD != null) gameHUD.SetActive(false);
         if (lobbyController != null) lobbyController.gameObject.SetActive(true);
@@ -84,91 +71,68 @@ public class UiController : MonoBehaviour
         StartCoroutine(FindLocalPlayerDelayed());
     }
 
+    public void IncrementPacketsSent() => networkStats.packetsSent++;
+    public void IncrementPacketsReceived() => networkStats.packetsReceived++;
+
     public void EnterLobbyMode()
     {
-        Time.timeScale = 1f;
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
-        if (spectatorCamera) spectatorCamera.SetActive(false);
+        SetCursorState(true);
         if (lobbyCamera) lobbyCamera.SetActive(true);
-
         if (gameHUD != null) gameHUD.SetActive(false);
-        if (lobbyController != null) lobbyController.gameObject.SetActive(true);
-        if (lobbyController != null) lobbyController.Init();
+        if (lobbyController != null)
+        {
+            lobbyController.gameObject.SetActive(true);
+            lobbyController.Init();
+        }
     }
 
     public void EnableGameHUD()
     {
         if (lobbyController != null) lobbyController.gameObject.SetActive(false);
         if (lobbyCamera != null) lobbyCamera.SetActive(false);
-
-        if (spectatorCamera != null) spectatorCamera.SetActive(true);
-
         if (gameHUD != null) gameHUD.SetActive(true);
-
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-
-        ShowNotification("FIGHT!", Color.red);
+        SetCursorState(false);
     }
+
     public void EnableSpectatorMode()
     {
         if (lobbyController != null) lobbyController.gameObject.SetActive(false);
         if (lobbyCamera != null) lobbyCamera.SetActive(false);
-
         if (gameHUD != null) gameHUD.SetActive(true);
+        SetCursorState(false);
+    }
 
-        if (spectatorCamera != null) spectatorCamera.SetActive(true);
-
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+    private void SetCursorState(bool visible)
+    {
+        Cursor.lockState = visible ? CursorLockMode.None : CursorLockMode.Locked;
+        Cursor.visible = visible;
+        Time.timeScale = 1f;
     }
 
     private IEnumerator FindLocalPlayerDelayed()
     {
         yield return new WaitForSeconds(0.5f);
-
         cachedLocalPlayer = FindLocalPlayer();
-        if (cachedLocalPlayer != null)
-        {
-            Debug.Log($"[UiController] Jugador local encontrado y cacheado: {cachedLocalPlayer.gameObject.name}");
-        }
-        else
-        {
-            Debug.LogWarning("[UiController] No se encontró jugador local en Start. Se buscará dinámicamente.");
-        }
     }
 
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.Escape))
         {
-            if (cachedLocalPlayer == null)
-                cachedLocalPlayer = FindLocalPlayer();
-
-            if (cachedLocalPlayer != null && cachedLocalPlayer.IsDead)
-                return;
-
+            if (cachedLocalPlayer == null) cachedLocalPlayer = FindLocalPlayer();
+            if (cachedLocalPlayer != null && cachedLocalPlayer.IsDead) return;
             TogglePauseMenu();
         }
 
-        if (Input.GetKeyDown(KeyCode.L))
-        {
-            ToggleNetworkDebugPanel();
-        }
+        if (Input.GetKeyDown(KeyCode.L)) ToggleNetworkDebugPanel();
     }
 
+    // ===== HITMARKER =====
     public void ShowHitMarker()
     {
         if (hitMarkerImage != null)
         {
-          
-            if (hitMarkerCoroutine != null)
-            {
-                StopCoroutine(hitMarkerCoroutine);
-            }
-
+            if (hitMarkerCoroutine != null) StopCoroutine(hitMarkerCoroutine);
             hitMarkerImage.SetActive(true);
             hitMarkerCoroutine = StartCoroutine(HideHitMarker());
         }
@@ -177,31 +141,15 @@ public class UiController : MonoBehaviour
     private IEnumerator HideHitMarker()
     {
         yield return new WaitForSeconds(hitMarkerDuration);
-
-        if (hitMarkerImage != null)
-        {
-            hitMarkerImage.SetActive(false);
-        }
+        if (hitMarkerImage != null) hitMarkerImage.SetActive(false);
         hitMarkerCoroutine = null;
     }
 
+    // ===== PAUSE MENU =====
     private void TogglePauseMenu()
     {
         isPaused = !isPaused;
         ShowPauseMenu(isPaused);
-
-        if (isPaused)
-        {
-            Time.timeScale = 0f;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        else
-        {
-            Time.timeScale = 1f;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-        }
     }
 
     public void ShowPauseMenu(bool show)
@@ -210,19 +158,9 @@ public class UiController : MonoBehaviour
         {
             pauseMenu.SetActive(show);
             isPaused = show;
-
-            if (show)
-            {
-                Time.timeScale = 0f;
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
-            }
-            else
-            {
-                Time.timeScale = 1f;
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
+            Cursor.lockState = show ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = show;
+            Time.timeScale = show ? 0f : 1f;
         }
     }
 
@@ -230,26 +168,17 @@ public class UiController : MonoBehaviour
     private void ToggleNetworkDebugPanel()
     {
         isDebugPanelVisible = !isDebugPanelVisible;
-
         if (networkDebugPanel != null)
         {
             networkDebugPanel.SetActive(isDebugPanelVisible);
-
             if (isDebugPanelVisible)
             {
-                // Iniciar actualización continua
-                if (debugUpdateCoroutine != null)
-                    StopCoroutine(debugUpdateCoroutine);
+                if (debugUpdateCoroutine != null) StopCoroutine(debugUpdateCoroutine);
                 debugUpdateCoroutine = StartCoroutine(UpdateNetworkDebugInfo());
             }
-            else
+            else if (debugUpdateCoroutine != null)
             {
-                // Detener actualización
-                if (debugUpdateCoroutine != null)
-                {
-                    StopCoroutine(debugUpdateCoroutine);
-                    debugUpdateCoroutine = null;
-                }
+                StopCoroutine(debugUpdateCoroutine);
             }
         }
     }
@@ -262,173 +191,120 @@ public class UiController : MonoBehaviour
             yield return new WaitForSeconds(debugUpdateInterval);
         }
     }
-
     private void UpdateNetworkDebugText()
     {
         if (networkDebugText == null) return;
 
         StringBuilder sb = new StringBuilder();
-        sb.AppendLine("=== NETWORK DEBUG INFO ===\n");
 
-        // Game Mode
-        if (GameManager.Instance != null)
-        {
-            GameManager.GameMode mode = GameManager.Instance.GetGameMode();
-            sb.AppendLine($"<color=yellow>MODE:</color> {mode}");
-        }
-        else
-        {
-            sb.AppendLine("<color=red>GameManager: NULL</color>");
-        }
+        sb.AppendLine("<color=#FFA500><b>=== NETWORK STATISTICS ===</b></color>");
 
-        sb.AppendLine();
+        // --- GENERAL ---
+        string fps = $"{(int)(1f / Time.unscaledDeltaTime)} FPS";
+        string ip = NetworkUtils.GetLocalIPAddress();
+        string mode = GameManager.Instance ? GameManager.Instance.GetGameMode().ToString() : "NULL";
 
-        // GameplayManager Info
-        if (GameplayManager.Instance != null)
-        {
-            var gm = GameplayManager.Instance;
+        sb.AppendLine($"SYS: {fps} | IP: {ip}");
+        sb.AppendLine($"MODE: {mode}");
 
-            var discovery = gm.GetComponent<ServerDiscoveryManager>();
-            if (discovery != null)
-            {
-                sb.AppendLine("SERVER DISCOVERY:");
-                sb.AppendLine($"  Searching: {discovery.IsSearching()}");
-                sb.AppendLine($"  Port: {discovery.discoveryPort}");
-            }
+        // --- TRAFFIC ---
+        sb.AppendLine("--------------------------------");
+        sb.AppendLine($"| ==== TRAFFIC ==== |");
+        sb.AppendLine($"Sent: <color=#00FF00>{networkStats.packetsSent}</color> | Recv: <color=#00FFFF>{networkStats.packetsReceived}</color> | Objs: {CountNetworkedObjects()}");
 
-            sb.AppendLine();
-        }
-        else
-        {
-            sb.AppendLine("GameplayManager: NULL\n");
-        }
-
-        // UDP Client Info
+        // --- CLIENT ---
         var udpClient = FindObjectOfType<UDPClient>();
         if (udpClient != null)
         {
-            sb.AppendLine("UDP CLIENT:");
-            sb.AppendLine($"  Connected: {udpClient.IsConnected}");
-            sb.AppendLine($"  Server IP: {udpClient.serverIP}");
-            sb.AppendLine($"  Server Port: {udpClient.serverPort}");
-            sb.AppendLine($"  Client Port: {udpClient.clientPort}");
-            sb.AppendLine($"  Client Key: {(string.IsNullOrEmpty(udpClient.ClientKey) ? "NULL" : udpClient.ClientKey.Substring(0, 8) + "...")}");
-        }
-        else
-        {
-            sb.AppendLine("UDP CLIENT: NOT FOUND");
+            sb.AppendLine("--------------------------------");
+            sb.AppendLine("| ==== CLIENT STATUS ==== |");
+
+            string status = udpClient.IsConnected ? "<color=green>CONNECTED</color>" : "<color=red>DISCONNECTED</color>";
+            string key = string.IsNullOrEmpty(udpClient.ClientKey) ? "NULL" : udpClient.ClientKey.Substring(0, 6) + "..";
+
+            sb.AppendLine($"State: {status}");
+            sb.AppendLine($"Server: {udpClient.serverIP}:{udpClient.serverPort}");
+            sb.AppendLine($"My Key: {key} | My Port: {udpClient.clientPort}");
         }
 
-        sb.AppendLine();
-
-        // UDP Server Info
+        // --- SERVER ---
         var udpServer = FindObjectOfType<UDPServer>();
         if (udpServer != null && udpServer.gameObject.activeInHierarchy)
         {
-            sb.AppendLine("UDP SERVER:");
-            sb.AppendLine($"  Port: {udpServer.port}");
-            sb.AppendLine($"  Active: {udpServer.enabled}");
-        }
-        else
-        {
-            sb.AppendLine("UDP SERVER: INACTIVE");
+            sb.AppendLine("--------------------------------");
+            sb.AppendLine("| ==== SERVER STATUS ==== |");
+            sb.AppendLine($"Port: {udpServer.port} | Clients: <color=yellow>{udpServer.GetConnectedClientCount()}</color>");
+
+            var clients = udpServer.GetConnectedClients();
+            if (clients != null && clients.Count > 0)
+            {
+                sb.AppendLine(" -- Connected List -- ");
+                foreach (var c in clients)
+                {
+                    string n = c.Name.Length > 8 ? c.Name.Substring(0, 8) : c.Name;
+                    string k = c.ClientKey.Substring(0, 4);
+                    float inactive = (System.DateTime.Now.Ticks - c.LastPacketTime) / 10000000f;
+                    string pingColor = inactive > 2.0f ? "red" : "green";
+
+                    sb.AppendLine($" > [{k}] {n,-9} | HP:{c.Health,3} | W:{c.WeaponID} | T:<color={pingColor}>{inactive:F1}s</color>");
+                }
+            }
         }
 
-        sb.AppendLine();
-
-        // Local Player Info
+        // --- PLAYER ---
         if (cachedLocalPlayer != null)
         {
-            sb.AppendLine("LOCAL PLAYER:");
-            sb.AppendLine($"  Position: {cachedLocalPlayer.transform.position}");
-            sb.AppendLine($"  Health: {cachedLocalPlayer.GetLifeComponent().health:F1}");
-            sb.AppendLine($"  Is Dead: {cachedLocalPlayer.IsDead}");
+            sb.AppendLine("--------------------------------");
+            sb.AppendLine("| ==== PLAYER STATE ==== |");
+
+            var lc = cachedLocalPlayer.GetLifeComponent();
+            float hp = lc ? lc.health : 0;
+            string pos = cachedLocalPlayer.transform.position.ToString("F1");
+
+            sb.AppendLine($"HP: {hp:F0}% | Pos: {pos}");
         }
-        else
+
+        // --- SIMULATION ---
+        if (NetworkSimulator.Instance != null && (NetworkSimulator.Instance.IsLatencyEnabled() || NetworkSimulator.Instance.IsPacketLossEnabled()))
         {
-            sb.AppendLine("LOCAL PLAYER: NULL");
+            sb.AppendLine("--------------------------------");
+            sb.AppendLine("| ==== SIMULATION ==== |");
+
+            if (NetworkSimulator.Instance.IsLatencyEnabled())
+                sb.AppendLine($"Lat: <color=orange>{NetworkSimulator.Instance.GetCurrentLatency()}ms</color>");
+
+            if (NetworkSimulator.Instance.IsPacketLossEnabled())
+                sb.AppendLine($"Loss: <color=red>{NetworkSimulator.Instance.GetPacketLossRate() * 100}%</color>");
         }
 
-        sb.AppendLine();
-
-        // Network Stats
-        sb.AppendLine("NETWORK STATS:");
-        PlayerController[] allPlayers = FindObjectsOfType<PlayerController>();
-        sb.AppendLine($"  Total Players: {allPlayers.Length}");
-        int remotePlayers = 0;
-        foreach (var p in allPlayers)
-        {
-            if (!p.IsLocalPlayer) remotePlayers++;
-        }
-        sb.AppendLine($"  Remote Players: {remotePlayers}");
-
-        sb.AppendLine();
-
-        // System Info
-        sb.AppendLine("SYSTEM:");
-        sb.AppendLine($"  Local IP: {NetworkUtils.GetLocalIPAddress()}");
-        sb.AppendLine($"  FPS: {(int)(1f / Time.unscaledDeltaTime)}");
-        sb.AppendLine($"  Time Scale: {Time.timeScale}");
-
+        sb.AppendLine("================================");
         networkDebugText.text = sb.ToString();
     }
 
-    // ===== DEATH SYSTEM =====
-    public void ShowDeathScreen()
+    private int CountNetworkedObjects()
     {
-        if (spectatorObject != null)
-        {
-            spectatorObject.SetActive(true);
-        }
+        return FindObjectsOfType<PlayerController>().Length +
+               FindObjectsOfType<HealStation>().Length +
+               FindObjectsOfType<WeaponStation>().Length;
     }
 
-    public void HideDeathScreen()
-    {   
-        if (spectatorObject != null)
-        {
-            spectatorObject.SetActive(false);
-        }
-    }
+    // ===== DEATH & NOTIFICATIONS =====
+    public void ShowDeathScreen() { if (spectatorObject) spectatorObject.SetActive(true); }
+    public void HideDeathScreen() { if (spectatorObject) spectatorObject.SetActive(false); }
 
     private void OnRespawnClicked()
     {
-        Debug.Log("[UiController] Respawn button clicked");
-        PlayerController localPlayer = cachedLocalPlayer;
-
-        if (localPlayer == null)
+        if (cachedLocalPlayer == null) cachedLocalPlayer = FindLocalPlayer();
+        if (cachedLocalPlayer != null)
         {
-            Debug.Log("[UiController] Cache null, buscando jugador local...");
-            localPlayer = FindLocalPlayer();
-            cachedLocalPlayer = localPlayer; 
-        }
-
-        if (localPlayer != null)
-        {
-            Debug.Log($"[UiController] Jugador encontrado: {localPlayer.gameObject.name}, IsDead: {localPlayer.IsDead}, IsLocal: {localPlayer.IsLocalPlayer}");
-
-            localPlayer.Respawn();
+            cachedLocalPlayer.Respawn();
             HideDeathScreen();
-        }
-        else
-        {
-            PlayerController[] allPlayers = FindObjectsOfType<PlayerController>();
-            Debug.Log($"[UiController] Total PlayerControllers encontrados: {allPlayers.Length}");
-            for (int i = 0; i < allPlayers.Length; i++)
-            {
-                Debug.Log($"  - Player {i}: {allPlayers[i].gameObject.name}, IsLocal: {allPlayers[i].IsLocalPlayer}, IsDead: {allPlayers[i].IsDead}, Enabled: {allPlayers[i].enabled}");
-            }
         }
     }
 
     private void OnQuitClicked()
     {
-        Debug.Log("[UiController] Quit button clicked");
-
-        if (GameplayManager.Instance != null)
-        {
-            GameplayManager.Instance.Disconnect();
-        }
-
+        if (GameplayManager.Instance != null) GameplayManager.Instance.Disconnect();
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #else
@@ -438,48 +314,14 @@ public class UiController : MonoBehaviour
 
     private PlayerController FindLocalPlayer()
     {
-        PlayerController[] players = FindObjectsOfType<PlayerController>(true);
-        foreach (PlayerController player in players)
-        {
-            if (player != null && player.IsLocalPlayer)
-            {
-                return player;
-            }
-        }
+        var players = FindObjectsOfType<PlayerController>();
+        foreach (var p in players) if (p.IsLocalPlayer) return p;
         return null;
     }
 
-    // ===== NOTIFICATIONS =====
-
-    public void ShowNotification(string message)
-    {
-        if (notificationText != null)
-        {
-            notificationText.text = message;
-            notificationText.gameObject.SetActive(true);
-
-            if (hideNotificationCoroutine != null)
-                StopCoroutine(hideNotificationCoroutine);
-
-            hideNotificationCoroutine = StartCoroutine(HideNotificationAfterDelay());
-        }
-    }
-
-    public void ShowPlayerJoined(string playerName = "")
-    {
-        string message = string.IsNullOrEmpty(playerName)
-            ? "A player has joined the game"
-            : $"{playerName} has joined the game";
-        ShowNotification(message);
-    }
-
-    public void ShowPlayerLeft(string playerName = "")
-    {
-        string message = string.IsNullOrEmpty(playerName)
-            ? "A player has left the game"
-            : $"{playerName} has left the game";
-        ShowNotification(message);
-    }
+    public void ShowNotification(string msg) => ShowNotification(msg, Color.white);
+    public void ShowPlayerJoined(string n = "") => ShowNotification(string.IsNullOrEmpty(n) ? "Player joined" : $"{n} joined");
+    public void ShowPlayerLeft(string n = "") => ShowNotification(string.IsNullOrEmpty(n) ? "Player left" : $"{n} left");
 
     public void ShowNotification(string message, Color color)
     {
@@ -488,10 +330,7 @@ public class UiController : MonoBehaviour
             notificationText.text = message;
             notificationText.color = color;
             notificationText.gameObject.SetActive(true);
-
-            if (hideNotificationCoroutine != null)
-                StopCoroutine(hideNotificationCoroutine);
-
+            if (hideNotificationCoroutine != null) StopCoroutine(hideNotificationCoroutine);
             hideNotificationCoroutine = StartCoroutine(HideNotificationAfterDelay());
         }
     }
@@ -499,44 +338,16 @@ public class UiController : MonoBehaviour
     private IEnumerator HideNotificationAfterDelay()
     {
         yield return new WaitForSeconds(notificationDuration);
-
-        if (notificationText != null)
-        {
-            notificationText.gameObject.SetActive(false);
-        }
-
-        hideNotificationCoroutine = null;
+        if (notificationText) notificationText.gameObject.SetActive(false);
     }
 
-    public void ResumeGame()
-    {
-        ShowPauseMenu(false);
-    }
-
-    public void Quit()
-    {
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-#else
-        Application.Quit();
-#endif
-    }
+    public void ResumeGame() => ShowPauseMenu(false);
+    public void Quit() => OnQuitClicked();
 
     void OnDestroy()
     {
-        if (respawnButton != null)
-        {
-            respawnButton.onClick.RemoveListener(OnRespawnClicked);
-        }
-
-        if (quitButton != null)
-        {
-            quitButton.onClick.RemoveListener(OnQuitClicked);
-        }
-
-        if (debugUpdateCoroutine != null)
-        {
-            StopCoroutine(debugUpdateCoroutine);
-        }
+        if (respawnButton) respawnButton.onClick.RemoveListener(OnRespawnClicked);
+        if (quitButton) quitButton.onClick.RemoveListener(OnQuitClicked);
+        if (debugUpdateCoroutine != null) StopCoroutine(debugUpdateCoroutine);
     }
 }

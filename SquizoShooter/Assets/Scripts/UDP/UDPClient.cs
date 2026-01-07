@@ -83,7 +83,8 @@ public class UDPClient : MonoBehaviour
         MatchWin = 31, 
         RoundReset = 32,
         PlayerJump = 33,
-        WeaponThrow = 34
+        WeaponThrow = 34,
+        Ping = 99
 
     }
 
@@ -91,6 +92,27 @@ public class UDPClient : MonoBehaviour
     {
         Thread t = new Thread(ConnectProcess) { IsBackground = true };
         t.Start();
+        StartCoroutine(PingRoutine());
+    }
+    IEnumerator PingRoutine()
+    {
+        while (true)
+        {
+            if (isConnected && !string.IsNullOrEmpty(clientKey))
+            {
+                SendPing();
+            }
+            yield return new WaitForSeconds(1.0f); 
+        }
+    }
+    void SendPing()
+    {
+        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write((byte)MessageType.Ping);
+            writer.Write(clientKey);
+            SendBinary(ms.ToArray());
+        }
     }
 
     void ConnectProcess()
@@ -159,6 +181,9 @@ public class UDPClient : MonoBehaviour
     void ProcessServerMessage(byte[] data)
     {
         if (data == null || data.Length == 0) return;
+
+        if (UiController.Instance != null)
+            UiController.Instance.IncrementPacketsReceived();
 
         try
         {
@@ -442,32 +467,6 @@ public class UDPClient : MonoBehaviour
         Cursor.visible = true;
         SceneManager.LoadScene("MainMenu");
     }
-    System.Collections.IEnumerator ReturnToLobbyRoutine()
-    {
-        yield return new WaitForSeconds(5.0f);
-
-        lock (cubesLock)
-        {
-            foreach (var c in playerCubes.Values)
-            {
-                if (c != null) Destroy(c);
-            }
-            playerCubes.Clear();
-        }
-
-        if (RoundScoreUI.Instance != null)
-            RoundScoreUI.Instance.ResetScore();
-
-        if (uiController != null)
-        {
-            uiController.HideDeathScreen(); 
-        }
-
-        if (uiController != null)
-            uiController.EnterLobbyMode();
-
-        Debug.Log("[Client] Regresado al Lobby.");
-    }
     public void SendReadyState(bool ready)
     {
         if (!isConnected) return;
@@ -525,11 +524,7 @@ public class UDPClient : MonoBehaviour
                 if (playerCubes.TryGetValue(senderKey, out GameObject cube) && cube != null)
                 {
                     var wm = cube.GetComponent<WeaponManager>();
-                    if (senderKey == clientKey)
-                    {
-                        // wm.SetWeaponByID(weaponID); 
-                    }
-                    else
+                    if (senderKey != clientKey)
                     {
                         if (wm != null) wm.SetWeaponByID(weaponID);
                     }
@@ -1035,6 +1030,15 @@ public class UDPClient : MonoBehaviour
         {
             if (serverEndPoint == null)
                 serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
+
+            if (UiController.Instance != null)
+                UiController.Instance.IncrementPacketsSent();
+
+            if (NetworkSimulator.Instance != null && NetworkSimulator.Instance.ShouldDropPacket())
+            {
+                Debug.Log("[Client] Packet DROPPED (simulation)");
+                return;
+            }
 
             clientSocket.SendTo(data, data.Length, SocketFlags.None, serverEndPoint);
         }

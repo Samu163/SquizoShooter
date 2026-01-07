@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using UnityEngine;
 
@@ -12,20 +11,15 @@ public class UDPServer : MonoBehaviour
 {
     [Header("Server Configuration")]
     public int port = 9050;
+    public float connectionTimeout = 5.0f;
+    public float pingInterval = 1.0f; 
 
     private Socket serverSocket;
     private Thread receiveThread;
     private volatile bool isRunning = false;
 
-    private readonly Dictionary<string, EndPoint> connectedClients = new Dictionary<string, EndPoint>();
-    private readonly Dictionary<string, Vector3> playerPositions = new Dictionary<string, Vector3>();
-    private readonly Dictionary<string, Vector3> playerRotations = new Dictionary<string, Vector3>();
-    private readonly Dictionary<string, float> playerHealth = new Dictionary<string, float>();
-    private readonly Dictionary<string, int> playerWeapons = new Dictionary<string, int>();
-
-    private readonly Dictionary<string, string> playerNames = new Dictionary<string, string>();
-    private readonly Dictionary<string, bool> playerReadyStatus = new Dictionary<string, bool>();
-
+    private readonly Dictionary<string, ClientProxy> connectedProxies = new Dictionary<string, ClientProxy>();
+    private readonly object clientsLock = new object();
 
     private readonly Dictionary<int, bool> healStationStates = new Dictionary<int, bool>();
     private const float HEAL_STATION_COOLDOWN_TIME = 5.0f;
@@ -34,37 +28,15 @@ public class UDPServer : MonoBehaviour
     private Dictionary<string, int> playerScores = new Dictionary<string, int>();
     private bool isRoundEnding = false;
     private bool isGameStarted = false;
-
-
     private int totalPlayersConnected = 0;
 
 
-    private readonly object clientsLock = new object();
-
     private enum MessageType : byte
     {
-        Handshake = 1,
-        Welcome = 2,
-        PlayerData = 3,
-        ShootAnim = 4,
-        Shot = 5,
-        Move = 6,
-        Rotate = 7,
-        HealRequest = 8,
-        HealStationData = 9,
-        KillConfirmed = 10,
-        Goodbye = 11,
-        WeaponChange = 12,
-        WeaponStationData = 13,
-        WeaponStationRequest = 15,
-        LobbyData = 20, 
-        ClientReady = 21, 
-        StartGame = 22,
-        RoundWin = 30, 
-        MatchWin = 31,
-        RoundReset = 32,
-        PlayerJump = 33,
-        WeaponThrow = 34
+        Handshake = 1, Welcome = 2, PlayerData = 3, ShootAnim = 4, Shot = 5, Move = 6, Rotate = 7,
+        HealRequest = 8, HealStationData = 9, KillConfirmed = 10, Goodbye = 11, WeaponChange = 12,
+        WeaponStationData = 13, WeaponStationRequest = 15, LobbyData = 20, ClientReady = 21, StartGame = 22,
+        RoundWin = 30, MatchWin = 31, RoundReset = 32, PlayerJump = 33, WeaponThrow = 34, Ping = 99
     }
 
     public void StartServer()
@@ -72,18 +44,36 @@ public class UDPServer : MonoBehaviour
         try
         {
             serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            IPEndPoint ipep = new IPEndPoint(IPAddress.Any, port);
-            serverSocket.Bind(ipep);
-
+            serverSocket.Bind(new IPEndPoint(IPAddress.Any, port));
             isRunning = true;
             receiveThread = new Thread(ReceiveLoop) { IsBackground = true };
             receiveThread.Start();
-
-            Debug.Log("[Server] UDP server started on port " + port);
+            Debug.Log($"[Server] UDP server started on port {port}. Timeout: {connectionTimeout}s");
         }
-        catch (Exception ex)
+        catch (Exception ex) { Debug.LogError("[Server] Error starting: " + ex.Message); }
+    }
+
+    void Update()
+    {
+        if (!isRunning) return;
+
+        lock (clientsLock)
         {
-            Debug.LogError("[Server] Error starting UDP server: " + ex.Message);
+            List<string> toDisconnect = new List<string>();
+            long now = DateTime.Now.Ticks;
+            long timeoutTicks = (long)(connectionTimeout * 10000000);
+
+            foreach (var kvp in connectedProxies)
+            {
+                if (now - kvp.Value.LastPacketTime > timeoutTicks)
+                    toDisconnect.Add(kvp.Key);
+            }
+
+            foreach (string key in toDisconnect)
+            {
+                Debug.LogWarning($"[Server] Client {key} timed out.");
+                RemoveClientInternal(key);
+            }
         }
     }
 
@@ -91,160 +81,68 @@ public class UDPServer : MonoBehaviour
     {
         byte[] buffer = new byte[4096];
         EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-
-        try
+        while (isRunning)
         {
-            while (isRunning)
+            try
             {
-                try
+                int bytes = serverSocket.ReceiveFrom(buffer, ref remoteEP);
+                if (bytes > 0)
                 {
-                    int bytes = serverSocket.ReceiveFrom(buffer, ref remoteEP);
-                    if (bytes > 0)
-                    {
-                        byte[] data = new byte[bytes];
-                        Array.Copy(buffer, data, bytes);
-                        ProcessClientMessage(data, remoteEP);
-                    }
-                }
-                catch (SocketException se)
-                {
-                    if (!isRunning) break;
-                    Debug.LogWarning("[Server] SocketException en ReceiveLoop: " + se.Message);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError("[Server] Error en ReceiveLoop: " + e.Message);
+                    byte[] data = new byte[bytes]; Array.Copy(buffer, data, bytes);
+                    ProcessClientMessage(data, remoteEP);
                 }
             }
-        }
-        finally
-        {
-            Debug.Log("[Server] ReceiveLoop terminado");
+            catch { if (!isRunning) break; }
         }
     }
 
     void ProcessClientMessage(byte[] data, EndPoint remote)
     {
         if (data == null || data.Length == 0) return;
-
         try
         {
-            using (MemoryStream ms = new MemoryStream(data))
-            using (BinaryReader reader = new BinaryReader(ms))
+            using (MemoryStream ms = new MemoryStream(data)) using (BinaryReader reader = new BinaryReader(ms))
             {
                 MessageType msgType = (MessageType)reader.ReadByte();
-
                 switch (msgType)
                 {
-                    case MessageType.Handshake:
-                        HandleHandshake(remote);
-                        break;
-                    case MessageType.ClientReady: 
-                        HandleClientReady(reader); 
-                        break;
-
-                    case MessageType.PlayerData:
-                        HandlePlayerData(reader);
-                        break;
-
-                    case MessageType.ShootAnim:
-                        HandleShootAnim(reader);
-                        break;
-
-                    case MessageType.Shot:
-                        HandleShot(reader);
-                        break;
-
-                    case MessageType.Move:
-                        HandleMove(reader, remote);
-                        break;
-
-                    case MessageType.Rotate:
-                        HandleRotate(reader, remote);
-                        break;
-
-                    case MessageType.HealRequest:
-                        HandleHealRequest(reader);
-                        break;
-
-                    case MessageType.WeaponChange:
-                        HandleWeaponSwitchNotification(reader); 
-                        break;
-
-                    case MessageType.WeaponStationRequest:
-                        HandleWeaponStationRequest(reader);
-                        break;
-
-                    case MessageType.Goodbye:
-                        HandleGoodbye(reader);
-                        break;
-
-                    case MessageType.PlayerJump:
-                        HandlePlayerJump(reader);
-                        break;
-
-                    case MessageType.WeaponThrow:
-                        HandleWeaponThrow(reader);
-                        break;
-
-                    default:
-                        Debug.LogWarning($"[Server] Tipo de mensaje desconocido: {msgType}");
-                        break;
+                    case MessageType.Handshake: HandleHandshake(remote); break;
+                    case MessageType.Ping: HandlePing(reader); break;
+                    case MessageType.Move: HandleMove(reader); break;
+                    case MessageType.Rotate: HandleRotate(reader); break;
+                    case MessageType.PlayerData: HandlePlayerData(reader); break;
+                    case MessageType.ShootAnim: HandleShootAnim(reader); break;
+                    case MessageType.Shot: HandleShot(reader); break;
+                    case MessageType.ClientReady: HandleClientReady(reader); break;
+                    case MessageType.HealRequest: HandleHealRequest(reader); break;
+                    case MessageType.WeaponChange: HandleWeaponSwitchNotification(reader); break;
+                    case MessageType.WeaponStationRequest: HandleWeaponStationRequest(reader); break;
+                    case MessageType.PlayerJump: HandlePlayerJump(reader); break;
+                    case MessageType.WeaponThrow: HandleWeaponThrow(reader); break;
+                    case MessageType.Goodbye: HandleGoodbye(reader); break;
                 }
             }
         }
-        catch (Exception e)
-        {
-            Debug.LogError($"[Server] Error procesando mensaje: {e.Message}");
-        }
+        catch (Exception e) { Debug.LogError($"[Server] Msg Error: {e.Message}"); }
     }
 
-    void HandleWeaponSwitchNotification(BinaryReader reader)
+    void UpdateClientTimestamp(string key)
     {
-        string senderKey = reader.ReadString();
-        int weaponID = reader.ReadInt32();
-
         lock (clientsLock)
         {
-            playerWeapons[senderKey] = weaponID;
+            if (connectedProxies.TryGetValue(key, out ClientProxy client))
+                client.LastPacketTime = DateTime.Now.Ticks;
         }
-        BroadcastWeaponChange(senderKey, weaponID);
     }
 
-    void HandleWeaponStationRequest(BinaryReader reader)
+    // --- HANDLERS ---
+
+    void HandlePing(BinaryReader reader)
     {
-        string senderKey = reader.ReadString();
-        int stationID = reader.ReadInt32();
-        int weaponID = reader.ReadInt32();
-
-        bool wasApproved = false;
-
-        lock (clientsLock)
-        {
-            if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
-            {
-                wasApproved = false;
-            }
-            else
-            {
-                Debug.Log($"[Server] WeaponStation {stationID} aprobada para {senderKey}. Arma: {weaponID}");
-                wasApproved = true;
-                healStationStates[stationID] = true; 
-                playerWeapons[senderKey] = weaponID; 
-            }
-        }
-
-        if (wasApproved)
-        {
-            BroadcastWeaponChange(senderKey, weaponID);
-            BroadcastWeaponStationState(stationID, 1);
-
-            Timer cooldownTimer = new Timer(
-                (state) => EndWeaponStationCooldown(stationID),
-                null, (int)(HEAL_STATION_COOLDOWN_TIME * 1000), Timeout.Infinite
-            );
-        }
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
     }
+
     void HandleHandshake(EndPoint remote)
     {
         string newKey = Guid.NewGuid().ToString();
@@ -254,274 +152,268 @@ public class UDPServer : MonoBehaviour
 
         lock (clientsLock)
         {
-            connectedClients[newKey] = remote;
-
             assignedIndex = totalPlayersConnected;
             totalPlayersConnected++;
 
-            playerPositions[newKey] = Vector3.zero;
-            playerWeapons[newKey] = 1;
-            playerNames[newKey] = randomName;
-            playerReadyStatus[newKey] = false;
+            ClientProxy newClient = new ClientProxy(newKey, randomName, remote, assignedIndex);
 
             if (isGameStarted)
             {
-
-                if (connectedClients.Count > 2)
+                if (connectedProxies.Count >= 2)
                 {
                     shouldSpectate = true;
-                    playerHealth[newKey] = 0f; 
-                    Debug.Log($"[Server] {randomName} entra como ESPECTADOR (Partida llena).");
+                    newClient.InitializeGameData(true);
+                    Debug.Log($"[Server] {randomName} -> ESPECTADOR.");
                 }
                 else
                 {
                     shouldSpectate = false;
-                    playerHealth[newKey] = 100f; 
-                    Debug.Log($"[Server] {randomName} entra a JUGAR (Host estaba solo).");
+                    newClient.InitializeGameData(false);
+                    Debug.Log($"[Server] {randomName} -> JUGAR.");
                 }
             }
             else
             {
-                playerHealth[newKey] = 100f;
+                newClient.InitializeGameData(false);
             }
+
+            connectedProxies.Add(newKey, newClient);
         }
 
         SendWelcome(newKey, remote, isGameStarted, assignedIndex, shouldSpectate);
-
         BroadcastLobbyState();
 
         if (isGameStarted)
         {
             SendAllPlayerPositionsToSingleClient(newKey, remote);
             SendAllHealStationStatesToSingleClient(remote);
-
-            CheckRoundWinCondition();
+            if (!shouldSpectate) CheckRoundWinCondition();
         }
     }
 
-    void SendWelcome(string clientKey, EndPoint remote, bool gameInProgress, int spawnIndex, bool shouldSpectate)
-    {
-        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.Welcome);
-            writer.Write(clientKey);
-            writer.Write(gameInProgress);
-            writer.Write(spawnIndex);
-            writer.Write(shouldSpectate);
-
-            SendBinaryToClient(ms.ToArray(), remote);
-        }
-    }
-    void HandleClientReady(BinaryReader reader)
+    void HandleMove(BinaryReader reader)
     {
         string key = reader.ReadString();
-        bool isReady = reader.ReadBoolean();
+        UpdateClientTimestamp(key);
+        float x = reader.ReadSingle(); float y = reader.ReadSingle(); float z = reader.ReadSingle();
+        Vector3 newPos = new Vector3(x, y, z);
 
         lock (clientsLock)
         {
-            if (playerReadyStatus.ContainsKey(key))
-                playerReadyStatus[key] = isReady;
+            if (connectedProxies.TryGetValue(key, out ClientProxy client))
+                client.Position = newPos;
         }
-        BroadcastLobbyState();
+        BroadcastMove(key, newPos);
     }
-    public void RequestStartGame(int rounds)
+
+    void HandleRotate(BinaryReader reader)
     {
-        maxRoundsToWin = rounds;
-        isGameStarted = true; 
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        float x = reader.ReadSingle(); float y = reader.ReadSingle(); float z = reader.ReadSingle();
+        Vector3 newRot = new Vector3(x, y, z);
 
         lock (clientsLock)
         {
-            playerScores.Clear();
-            foreach (var key in connectedClients.Keys) playerScores[key] = 0;
+            if (connectedProxies.TryGetValue(key, out ClientProxy client))
+                client.Rotation = newRot;
         }
-
-        BroadcastGameStart(rounds);
+        BroadcastRotate(key, newRot);
     }
 
-    void HandleWeaponThrow(BinaryReader reader)
-    {
-        string senderKey = reader.ReadString();
-        int weaponID = reader.ReadInt32();
-        float px = reader.ReadSingle();
-        float py = reader.ReadSingle();
-        float pz = reader.ReadSingle();
-        float dx = reader.ReadSingle();
-        float dy = reader.ReadSingle();
-        float dz = reader.ReadSingle();
-
-        Debug.Log($"[Server] {senderKey} threw weapon {weaponID} at position ({px}, {py}, {pz})");
-
-        // Actualizar el estado del jugador - ahora no tiene arma (weaponID = 0)
-        lock (clientsLock)
-        {
-            playerWeapons[senderKey] = 0; // 0 = sin arma
-        }
-
-        // Broadcast to all clients
-        BroadcastWeaponThrow(senderKey, weaponID, px, py, pz, dx, dy, dz);
-    }
-
-    void BroadcastWeaponThrow(string senderKey, int weaponID, float px, float py, float pz, float dx, float dy, float dz)
-    {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.WeaponThrow);
-            writer.Write(senderKey);
-            writer.Write(weaponID);
-            writer.Write(px);
-            writer.Write(py);
-            writer.Write(pz);
-            writer.Write(dx);
-            writer.Write(dy);
-            writer.Write(dz);
-
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock)
-            {
-                snapshot = new List<EndPoint>(connectedClients.Values);
-            }
-
-            Debug.Log($"[Server] Broadcasting weapon throw from {senderKey} to {snapshot.Count} clients");
-
-            foreach (var ep in snapshot)
-            {
-                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
-                catch (Exception e) { Debug.LogWarning("[Server] Error enviando WEAPON_THROW: " + e.Message); }
-            }
-        }
-    }
-    void BroadcastLobbyState()
-    {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.LobbyData);
-
-            lock (clientsLock)
-            {
-                writer.Write(connectedClients.Count);
-                foreach (var key in connectedClients.Keys)
-                {
-                    writer.Write(key);
-                    writer.Write(playerNames.ContainsKey(key) ? playerNames[key] : "Unknown");
-                    writer.Write(playerReadyStatus.ContainsKey(key) ? playerReadyStatus[key] : false);
-                }
-            }
-
-            byte[] data = ms.ToArray();
-            List<EndPoint> snapshot;
-            lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
-            foreach (var ep in snapshot) SendBinaryToClient(data, ep);
-        }
-    }
-
-    void BroadcastGameStart()
-    {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.StartGame);
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
-            foreach (var ep in snapshot) SendBinaryToClient(data, ep);
-        }
-    }
     void HandlePlayerData(BinaryReader reader)
     {
-        string senderKey = reader.ReadString();
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
         float health = reader.ReadSingle();
 
         lock (clientsLock)
         {
-            playerHealth[senderKey] = health;
+            if (connectedProxies.TryGetValue(key, out ClientProxy client))
+                client.Health = health;
         }
-
-        Debug.Log($"[Server] Vida actualizada: {senderKey} -> {health}");
-        BroadcastPlayerHealth(senderKey, health);
-    }
-
-    void HandleShootAnim(BinaryReader reader)
-    {
-        string shooterKey = reader.ReadString();
-        Debug.Log($"[Server] SHOOT_ANIM de {shooterKey}");
-        BroadcastShootAnim(shooterKey);
+        BroadcastPlayerHealth(key, health);
     }
 
     void HandleShot(BinaryReader reader)
     {
-        string shooterKey = reader.ReadString();
-        string targetKey = reader.ReadString();
-        float damage = reader.ReadSingle();
+        string shooter = reader.ReadString();
+        string target = reader.ReadString();
+        UpdateClientTimestamp(shooter);
+        float dmg = reader.ReadSingle();
 
-        if (shooterKey == targetKey)
-        {
-            Debug.LogWarning($"[Server] SHOT ignorado: shooter == target ({shooterKey}).");
-            return;
-        }
+        if (shooter == target) return;
 
         bool wasKill = false;
-        float newHealth = 0f;
+        float newHealth = 0;
 
         lock (clientsLock)
         {
-            float currentHealth = 100f;
-            if (playerHealth.ContainsKey(targetKey))
-                currentHealth = playerHealth[targetKey];
-            else
-                playerHealth[targetKey] = currentHealth;
-
-            newHealth = Mathf.Clamp(currentHealth - damage, 0f, 100f);
-            playerHealth[targetKey] = newHealth;
-
-            if (newHealth <= 0f && currentHealth > 0f)
+            if (connectedProxies.TryGetValue(target, out ClientProxy victim))
             {
-                wasKill = true;
-                Debug.Log($"[Server] ¡KILL! {shooterKey} eliminó a {targetKey}");
-            }
+                float current = victim.Health;
+                newHealth = Mathf.Clamp(current - dmg, 0, 100);
+                victim.Health = newHealth;
 
-            Debug.Log($"[Server] SHOT recibido: {shooterKey} -> {targetKey} dmg={damage} newHealth={newHealth}");
-            BroadcastPlayerHealth(targetKey, newHealth);
+                if (newHealth <= 0 && current > 0)
+                {
+                    wasKill = true;
+                    Debug.Log($"[Server] KILL: {shooter} -> {target}");
+                }
+            }
         }
+
+        BroadcastPlayerHealth(target, newHealth);
 
         if (wasKill)
         {
-            SendKillConfirmation(shooterKey);
+            SendKillConfirmation(shooter);
             CheckRoundWinCondition();
-
         }
     }
+
+    void HandleWeaponSwitchNotification(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        int id = reader.ReadInt32();
+        lock (clientsLock) { if (connectedProxies.TryGetValue(key, out ClientProxy c)) c.WeaponID = id; }
+        BroadcastWeaponChange(key, id);
+    }
+
+    void HandleClientReady(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        bool r = reader.ReadBoolean();
+        lock (clientsLock) { if (connectedProxies.TryGetValue(key, out ClientProxy c)) c.IsReady = r; }
+        BroadcastLobbyState();
+    }
+
+    void HandleGoodbye(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        RemoveClientByKey(key);
+    }
+
+    void HandleShootAnim(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.ShootAnim); w.Write(key); BroadcastData(m.ToArray());
+        }
+    }
+
+    void HandlePlayerJump(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.PlayerJump); w.Write(key); BroadcastData(m.ToArray());
+        }
+    }
+
+    void HandleWeaponThrow(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        int wID = reader.ReadInt32();
+        float px = reader.ReadSingle(); float py = reader.ReadSingle(); float pz = reader.ReadSingle();
+        float dx = reader.ReadSingle(); float dy = reader.ReadSingle(); float dz = reader.ReadSingle();
+
+        lock (clientsLock) { if (connectedProxies.TryGetValue(key, out ClientProxy c)) c.WeaponID = 0; }
+
+        using (MemoryStream m = new MemoryStream()) using (BinaryWriter wr = new BinaryWriter(m))
+        {
+            wr.Write((byte)MessageType.WeaponThrow);
+            wr.Write(key); wr.Write(wID);
+            wr.Write(px); wr.Write(py); wr.Write(pz);
+            wr.Write(dx); wr.Write(dy); wr.Write(dz);
+            BroadcastData(m.ToArray());
+        }
+    }
+
+    void HandleHealRequest(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        int id = reader.ReadInt32();
+        bool approved = false;
+
+        lock (clientsLock)
+        {
+            if (!healStationStates.TryGetValue(id, out bool cd) || !cd)
+            {
+                approved = true;
+                healStationStates[id] = true;
+                if (connectedProxies.TryGetValue(key, out ClientProxy c)) c.Health = 100f;
+            }
+        }
+
+        if (approved)
+        {
+            BroadcastPlayerHealth(key, 100f);
+            BroadcastHealStationState(id, 1);
+            new System.Threading.Timer(_ => EndHealStationCooldown(id), null, (int)(HEAL_STATION_COOLDOWN_TIME * 1000), Timeout.Infinite);
+        }
+    }
+
+    void HandleWeaponStationRequest(BinaryReader reader)
+    {
+        string key = reader.ReadString();
+        UpdateClientTimestamp(key);
+        int sID = reader.ReadInt32();
+        int wID = reader.ReadInt32();
+        bool approved = false;
+
+        lock (clientsLock)
+        {
+            if (!healStationStates.TryGetValue(sID, out bool cd) || !cd)
+            {
+                approved = true;
+                healStationStates[sID] = true;
+                if (connectedProxies.TryGetValue(key, out ClientProxy c)) c.WeaponID = wID;
+            }
+        }
+
+        if (approved)
+        {
+            BroadcastWeaponChange(key, wID);
+            BroadcastWeaponStationState(sID, 1);
+            new System.Threading.Timer(_ => EndWeaponStationCooldown(sID), null, (int)(HEAL_STATION_COOLDOWN_TIME * 1000), Timeout.Infinite);
+        }
+    }
+
+    // --- GAME LOGIC ---
+
     void CheckRoundWinCondition()
     {
-        if (!isGameStarted || isRoundEnding || connectedClients.Count < 2) return;
+        if (!isGameStarted || isRoundEnding || connectedProxies.Count < 2) return;
 
         int aliveCount = 0;
         string lastAliveKey = "";
 
         lock (clientsLock)
         {
-            foreach (var kvp in connectedClients)
+            foreach (var proxy in connectedProxies.Values)
             {
-                if (playerHealth.ContainsKey(kvp.Key) && playerHealth[kvp.Key] > 0)
+                if (proxy.Health > 0)
                 {
                     aliveCount++;
-                    lastAliveKey = kvp.Key;
+                    lastAliveKey = proxy.ClientKey;
                 }
             }
         }
-        if (aliveCount <= 1)
-        {
-            StartRoundEndSequence(lastAliveKey);
-        }
+
+        if (aliveCount <= 1) StartRoundEndSequence(lastAliveKey);
     }
+
     void StartRoundEndSequence(string winnerKey)
     {
         isRoundEnding = true;
-
         string winnerName = "Nadie";
         bool matchWon = false;
 
@@ -531,38 +423,32 @@ public class UDPServer : MonoBehaviour
             {
                 if (!playerScores.ContainsKey(winnerKey)) playerScores[winnerKey] = 0;
                 playerScores[winnerKey]++;
-
                 if (playerScores[winnerKey] >= maxRoundsToWin) matchWon = true;
-
-                if (playerNames.ContainsKey(winnerKey)) winnerName = playerNames[winnerKey];
+                if (connectedProxies.TryGetValue(winnerKey, out ClientProxy p)) winnerName = p.Name;
             }
         }
 
         if (matchWon)
         {
-            Debug.Log($"[Server] Game Ended" +
-                $"Winner:" +
-                $" {winnerName}");
             BroadcastMatchWin(winnerName);
-
-            // Esperar 5 segundos y volver al Lobby (reseteando el server)
             new System.Threading.Timer(_ => ResetToLobby(), null, 5000, Timeout.Infinite);
         }
         else
         {
-            Debug.Log($"[Server] Winner: {winnerName}");
             BroadcastRoundWin(winnerKey, winnerName);
-
-            // Esperar 3 segundos y reiniciar ronda
             new System.Threading.Timer(_ => ResetRound(), null, 3000, Timeout.Infinite);
         }
     }
+
     void ResetRound()
     {
         lock (clientsLock)
         {
-            List<string> keys = new List<string>(playerHealth.Keys);
-            foreach (var k in keys) playerHealth[k] = 100f; 
+            foreach (var proxy in connectedProxies.Values)
+            {
+                proxy.Health = 100f;
+                proxy.IsSpectating = false;
+            }
         }
         isRoundEnding = false;
         BroadcastRoundReset();
@@ -572,347 +458,61 @@ public class UDPServer : MonoBehaviour
     {
         isGameStarted = false;
         isRoundEnding = false;
-
         lock (clientsLock)
         {
-            List<string> keys = new List<string>(playerHealth.Keys);
-            foreach (var k in keys) playerHealth[k] = 100f;
-
-            List<string> rKeys = new List<string>(playerReadyStatus.Keys);
-            foreach (var k in rKeys) playerReadyStatus[k] = false;
+            foreach (var p in connectedProxies.Values) { p.Health = 100f; p.IsReady = false; p.IsSpectating = false; }
         }
         BroadcastLobbyState();
     }
 
-    void BroadcastGameStart(int maxRounds)
+    public void RequestStartGame(int rounds)
     {
-        int roundOffset = UnityEngine.Random.Range(0, 100);
-
-        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
-        {
-            w.Write((byte)MessageType.StartGame);
-            w.Write(maxRounds);
-            w.Write(roundOffset); 
-
-            byte[] data = ms.ToArray();
-            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
-            foreach (var e in eps) SendBinaryToClient(data, e);
-        }
-    }
-
-    
-
-    void BroadcastRoundWin(string winnerKey, string winnerName)
-    {
-        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
-        {
-            w.Write((byte)MessageType.RoundWin);
-            w.Write(winnerKey);
-            w.Write(winnerName);
-            byte[] data = ms.ToArray();
-            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
-            foreach (var e in eps) SendBinaryToClient(data, e);
-        }
-    }
-
-    void BroadcastMatchWin(string winnerName)
-    {
-        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
-        {
-            w.Write((byte)MessageType.MatchWin);
-            w.Write(winnerName);
-            byte[] data = ms.ToArray();
-            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
-            foreach (var e in eps) SendBinaryToClient(data, e);
-        }
-    }
-
-    void BroadcastRoundReset()
-    {
-        int roundOffset = UnityEngine.Random.Range(0, 100);
-
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter w = new BinaryWriter(ms))
-        {
-            w.Write((byte)MessageType.RoundReset);
-            w.Write(roundOffset);
-
-            byte[] data = ms.ToArray();
-            List<EndPoint> eps; lock (clientsLock) eps = new List<EndPoint>(connectedClients.Values);
-            foreach (var ep in eps) SendBinaryToClient(data, ep);
-        }
-    }
-    void HandleMove(BinaryReader reader, EndPoint remote)
-    {
-        string senderKey = reader.ReadString();
-        float x = reader.ReadSingle();
-        float y = reader.ReadSingle();
-        float z = reader.ReadSingle();
-
-        Vector3 newPos = new Vector3(x, y, z);
-
+        maxRoundsToWin = rounds;
+        isGameStarted = true;
         lock (clientsLock)
         {
-            if (playerPositions.ContainsKey(senderKey))
-            {
-                playerPositions[senderKey] = newPos;
-            }
-            else
-            {
-                connectedClients[senderKey] = remote;
-                playerPositions[senderKey] = newPos;
-            }
+            playerScores.Clear();
+            foreach (var key in connectedProxies.Keys) playerScores[key] = 0;
         }
-
-        Debug.Log($"[Server] Actualizando posición de {senderKey}: {newPos}");
-        BroadcastMove(senderKey, newPos);
+        BroadcastGameStart(rounds);
     }
 
-    void HandleRotate(BinaryReader reader, EndPoint remote)
+    // --- BROADCASTS & HELPERS ---
+
+    void BroadcastData(byte[] data)
     {
-        string senderKey = reader.ReadString();
-        float x = reader.ReadSingle();
-        float y = reader.ReadSingle();
-        float z = reader.ReadSingle();
-
-        Vector3 newRot = new Vector3(x, y, z);
-
-        lock (clientsLock)
-        {
-            if (playerRotations.ContainsKey(senderKey))
-            {
-                playerRotations[senderKey] = newRot;
-            }
-            else
-            {
-                connectedClients[senderKey] = remote;
-                playerRotations[senderKey] = newRot;
-            }
-        }
-
-        Debug.Log($"[Server] Actualizando rotación de {senderKey}: {newRot}");
-        BroadcastRotate(senderKey, newRot);
+        List<EndPoint> eps;
+        lock (clientsLock) eps = connectedProxies.Values.Select(p => p.RemoteEndPoint).ToList();
+        foreach (var e in eps) SendBinaryToClient(data, e);
     }
 
-    void HandleHealRequest(BinaryReader reader)
-    {
-        string senderKey = reader.ReadString();
-        int stationID = reader.ReadInt32();
-
-        bool wasApproved = false;
-        float newHealth = 0f;
-
-        lock (clientsLock)
-        {
-            if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
-            {
-                Debug.Log($"[Server] Petición de cura para {stationID} denegada (ya en cooldown).");
-                wasApproved = false;
-            }
-            else
-            {
-                Debug.Log($"[Server] Petición de cura para {stationID} APROBADA. Iniciando cooldown.");
-                wasApproved = true;
-
-                healStationStates[stationID] = true;
-
-                if (playerHealth.ContainsKey(senderKey))
-                {
-                    playerHealth[senderKey] = 100f;
-                    newHealth = 100f;
-                }
-            }
-        }
-
-        if (wasApproved)
-        {
-            if (newHealth > 0)
-            {
-                BroadcastPlayerHealth(senderKey, newHealth);
-            }
-            BroadcastHealStationState(stationID, 1);
-            Timer cooldownTimer = new Timer(
-                (state) => EndHealStationCooldown(stationID),
-                null,
-                (int)(HEAL_STATION_COOLDOWN_TIME * 1000),
-                Timeout.Infinite
-            );
-        }
-    }
-
-    void HandleWeaponRequest(BinaryReader reader)
-    {
-        string senderKey = reader.ReadString();
-        int stationID = reader.ReadInt32();
-        int weaponID = reader.ReadInt32(); 
-
-        bool wasApproved = false;
-
-        lock (clientsLock)
-        {
-            if (healStationStates.TryGetValue(stationID, out bool isCooldown) && isCooldown)
-            {
-                Debug.Log($"[Server] Petición de arma para {stationID} denegada (ya en cooldown).");
-                wasApproved = false;
-            }
-            else
-            {
-                Debug.Log($"[Server] Petición de arma para {stationID} APROBADA. Iniciando cooldown y cambiando a arma {weaponID}.");
-                wasApproved = true;
-
-                healStationStates[stationID] = true;
-
-                playerWeapons[senderKey] = weaponID;
-            }
-        }
-
-        if (wasApproved)
-        {
-            BroadcastWeaponChange(senderKey, weaponID);
-
-            BroadcastWeaponStationState(stationID, 1);
-
-            Timer cooldownTimer = new Timer(
-                (state) => EndWeaponStationCooldown(stationID),
-                null,
-                (int)(HEAL_STATION_COOLDOWN_TIME * 1000),
-                Timeout.Infinite
-            );
-        }
-    }
-
-    void HandleGoodbye(BinaryReader reader)
-    {
-        string key = reader.ReadString();
-        RemoveClientByKey(key);
-    }
-    void HandlePlayerJump(BinaryReader reader)
-    {
-        string senderKey = reader.ReadString();
-        // Reenviar a todos
-        BroadcastPlayerJump(senderKey);
-    }
-    void BroadcastPlayerJump(string senderKey)
-    {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.PlayerJump);
-            writer.Write(senderKey);
-
-            byte[] data = ms.ToArray();
-            List<EndPoint> snapshot;
-            lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
-
-            foreach (var ep in snapshot) SendBinaryToClient(data, ep);
-        }
-    }
-    void EndHealStationCooldown(int stationID)
-    {
-        Debug.Log($"[Server] Cooldown de HealStation {stationID} terminado.");
-
-        lock (clientsLock)
-        {
-            healStationStates[stationID] = false;
-        }
-
-        BroadcastHealStationState(stationID, 0);
-    }
-
-    void EndWeaponStationCooldown(int stationID)
-    {
-        Debug.Log($"[Server] Cooldown de WeaponStation {stationID} terminado.");
-
-        lock (clientsLock)
-        {
-            healStationStates[stationID] = false;
-        }
-
-        BroadcastWeaponStationState(stationID, 0); 
-    }
-
-    void SendKillConfirmation(string shooterKey)
-    {
-        EndPoint shooterEndPoint;
-        lock (clientsLock)
-        {
-            if (!connectedClients.TryGetValue(shooterKey, out shooterEndPoint))
-            {
-                Debug.LogWarning($"[Server] No se pudo encontrar EndPoint para shooter: {shooterKey}");
-                return;
-            }
-        }
-
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.KillConfirmed);
-            writer.Write(shooterKey);
-
-            byte[] data = ms.ToArray();
-            SendBinaryToClient(data, shooterEndPoint);
-        }
-
-        Debug.Log($"[Server] Enviado KILL_CONFIRMED a {shooterKey}");
-    }
     void SendAllPlayerPositionsToSingleClient(string newKey, EndPoint remote)
     {
         lock (clientsLock)
         {
-            foreach (var kv in playerPositions)
+            foreach (var proxy in connectedProxies.Values)
             {
-                string key = kv.Key;
-                if (key == newKey) continue;
+                if (proxy.ClientKey == newKey) continue; // No me env�o a m� mismo
 
-                Vector3 pos = kv.Value;
-
-                using (MemoryStream ms = new MemoryStream())
-                using (BinaryWriter writer = new BinaryWriter(ms))
+                using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
                 {
-                    writer.Write((byte)MessageType.Move);
-                    writer.Write(key);
-                    writer.Write(pos.x);
-                    writer.Write(pos.y);
-                    writer.Write(pos.z);
-
-                    byte[] data = ms.ToArray();
-                    SendBinaryToClient(data, remote);
+                    w.Write((byte)MessageType.Move); w.Write(proxy.ClientKey);
+                    w.Write(proxy.Position.x); w.Write(proxy.Position.y); w.Write(proxy.Position.z);
+                    SendBinaryToClient(m.ToArray(), remote);
                 }
-
-                if (playerHealth.TryGetValue(key, out float h))
+                using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
                 {
-                    using (MemoryStream ms = new MemoryStream())
-                    using (BinaryWriter writer = new BinaryWriter(ms))
-                    {
-                        writer.Write((byte)MessageType.PlayerData);
-                        writer.Write(key);
-                        writer.Write(h);
-
-                        byte[] data = ms.ToArray();
-                        SendBinaryToClient(data, remote);
-                    }
+                    w.Write((byte)MessageType.PlayerData); w.Write(proxy.ClientKey); w.Write(proxy.Health);
+                    SendBinaryToClient(m.ToArray(), remote);
                 }
-
-                // Send weapon state
-                if (playerWeapons.TryGetValue(key, out int weaponID))
+                using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
                 {
-                    using (MemoryStream ms = new MemoryStream())
-                    using (BinaryWriter writer = new BinaryWriter(ms))
-                    {
-                        writer.Write((byte)MessageType.WeaponChange);
-                        writer.Write(key);
-                        writer.Write(weaponID);
-
-                        byte[] data = ms.ToArray();
-                        SendBinaryToClient(data, remote);
-                    }
+                    w.Write((byte)MessageType.WeaponChange); w.Write(proxy.ClientKey); w.Write(proxy.WeaponID);
+                    SendBinaryToClient(m.ToArray(), remote);
                 }
-
-                Thread.Sleep(5);
+                Thread.Sleep(2);
             }
         }
-
-        Debug.Log($"[Server] Enviadas {playerPositions.Count - 1} posiciones al cliente {newKey}");
     }
 
     void SendAllHealStationStatesToSingleClient(EndPoint remote)
@@ -920,285 +520,252 @@ public class UDPServer : MonoBehaviour
         lock (clientsLock)
         {
             if (healStationStates.Count == 0) return;
-
-            Debug.Log($"[Server] Enviando {healStationStates.Count} estados de HealStation/WeaponStation al nuevo cliente...");
-
             foreach (var kvp in healStationStates)
             {
-                int stationID = kvp.Key;
-                bool isCooldown = kvp.Value;
-                int stateCode = isCooldown ? 1 : 0;
-
-
-                MessageType msgToSend = MessageType.HealStationData;
-                if (stationID > 100)
+                int stateCode = kvp.Value ? 1 : 0;
+                MessageType msg = kvp.Key > 100 ? MessageType.WeaponStationData : MessageType.HealStationData;
+                using (MemoryStream ms = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(ms))
                 {
-                    msgToSend = MessageType.WeaponStationData;
+                    w.Write((byte)msg); w.Write(kvp.Key); w.Write(stateCode);
+                    SendBinaryToClient(ms.ToArray(), remote);
                 }
-
-
-                using (MemoryStream ms = new MemoryStream())
-                using (BinaryWriter writer = new BinaryWriter(ms))
-                {
-                    writer.Write((byte)msgToSend);
-                    writer.Write(stationID);
-                    writer.Write(stateCode);
-
-                    byte[] data = ms.ToArray();
-                    SendBinaryToClient(data, remote);
-                }
-
                 Thread.Sleep(5);
             }
         }
     }
 
-    void BroadcastMove(string senderKey, Vector3 pos)
+    void RemoveClientByKey(string key)
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        lock (clientsLock) RemoveClientInternal(key);
+    }
+
+    void RemoveClientInternal(string key)
+    {
+        if (connectedProxies.ContainsKey(key))
         {
-            writer.Write((byte)MessageType.Move);
-            writer.Write(senderKey);
-            writer.Write(pos.x);
-            writer.Write(pos.y);
-            writer.Write(pos.z);
+            connectedProxies.Remove(key);
+            BroadcastLobbyState();
+            CheckRoundWinCondition();
 
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot = new List<EndPoint>();
-            lock (clientsLock)
+            using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
             {
-                foreach (var kv in connectedClients)
-                    snapshot.Add(kv.Value);
+                w.Write((byte)MessageType.Goodbye); w.Write(key);
+                BroadcastData(m.ToArray());
             }
-
-            foreach (var ep in snapshot)
-            {
-                try
-                {
-                    serverSocket.SendTo(data, data.Length, SocketFlags.None, ep);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning("[Server] Error enviando MOVE a " + ep + ": " + e.Message);
-                }
-            }
+            Debug.Log($"[Server] Cliente {key} eliminado.");
         }
     }
 
-    void BroadcastRotate(string senderKey, Vector3 rot)
+    void SendWelcome(string k, EndPoint r, bool g, int i, bool s)
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
         {
-            writer.Write((byte)MessageType.Rotate);
-            writer.Write(senderKey);
-            writer.Write(rot.x);
-            writer.Write(rot.y);
-            writer.Write(rot.z);
+            w.Write((byte)MessageType.Welcome); w.Write(k); w.Write(g); w.Write(i); w.Write(s);
+            SendBinaryToClient(m.ToArray(), r);
+        }
+    }
 
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot = new List<EndPoint>();
+    void BroadcastLobbyState()
+    {
+        using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.LobbyData);
             lock (clientsLock)
             {
-                foreach (var kv in connectedClients)
-                    snapshot.Add(kv.Value);
-            }
-
-            foreach (var ep in snapshot)
-            {
-                try
+                w.Write(connectedProxies.Count);
+                foreach (var p in connectedProxies.Values)
                 {
-                    serverSocket.SendTo(data, data.Length, SocketFlags.None, ep);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning("[Server] Error enviando ROTATE a " + ep + ": " + e.Message);
+                    w.Write(p.ClientKey); w.Write(p.Name); w.Write(p.IsReady);
                 }
             }
+            BroadcastData(m.ToArray());
         }
     }
 
-    void BroadcastPlayerHealth(string senderKey, float health)
+    void SendKillConfirmation(string k)
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        if (connectedProxies.ContainsKey(k))
         {
-            writer.Write((byte)MessageType.PlayerData);
-            writer.Write(senderKey);
-            writer.Write(health);
-
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock)
+            using (MemoryStream m = new MemoryStream()) using (BinaryWriter w = new BinaryWriter(m))
             {
-                snapshot = new List<EndPoint>(connectedClients.Values);
-            }
-
-            foreach (var ep in snapshot)
-            {
-                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
-                catch (Exception e) { Debug.LogWarning("[Server] Error enviando PLAYERDATA: " + e.Message); }
+                w.Write((byte)MessageType.KillConfirmed); w.Write(k);
+                SendBinaryToClient(m.ToArray(), connectedProxies[k].RemoteEndPoint);
             }
         }
     }
-
-    void BroadcastShootAnim(string shooterKey)
+    void BroadcastGameStart(int r)
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        int off = UnityEngine.Random.Range(0, 100);
+
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
         {
-            writer.Write((byte)MessageType.ShootAnim);
-            writer.Write(shooterKey);
+            w.Write((byte)MessageType.StartGame);
+            w.Write(r);
+            w.Write(off);
 
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock)
-            {
-                snapshot = new List<EndPoint>(connectedClients.Values);
-            }
-
-            foreach (var ep in snapshot)
-            {
-                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
-                catch (Exception e) { Debug.LogWarning("[Server] Error enviando SHOOT_ANIM: " + e.Message); }
-            }
+            BroadcastData(m.ToArray());
         }
     }
-
-    void BroadcastHealStationState(int stationID, int stateCode)
+    void BroadcastRoundReset()
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        int off = UnityEngine.Random.Range(0, 100);
+
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
         {
-            writer.Write((byte)MessageType.HealStationData);
-            writer.Write(stationID);
-            writer.Write(stateCode);
+            w.Write((byte)MessageType.RoundReset);
+            w.Write(off);
 
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock)
-            {
-                snapshot = new List<EndPoint>(connectedClients.Values);
-            }
-
-            Debug.Log($"[Server] Transmitiendo estado de HealStation {stationID} a {snapshot.Count} clientes. Estado: {stateCode}");
-
-            foreach (var ep in snapshot)
-            {
-                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
-                catch (Exception e) { Debug.LogWarning("[Server] Error enviando HEAL_STATION_DATA: " + e.Message); }
-            }
+            BroadcastData(m.ToArray());
         }
     }
-
-    void BroadcastWeaponChange(string senderKey, int weaponID)
+    void BroadcastRoundWin(string k, string n)
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
         {
-            writer.Write((byte)MessageType.WeaponChange);
-            writer.Write(senderKey);
-            writer.Write(weaponID);
+            w.Write((byte)MessageType.RoundWin);
+            w.Write(k ?? "");
+            w.Write(n);
 
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock)
-            {
-                snapshot = new List<EndPoint>(connectedClients.Values);
-            }
-
-            foreach (var ep in snapshot)
-            {
-                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
-                catch (Exception e) { Debug.LogWarning("[Server] Error enviando WEAPON_CHANGE: " + e.Message); }
-            }
+            BroadcastData(m.ToArray());
         }
     }
-
-    void BroadcastWeaponStationState(int stationID, int stateCode)
+    void BroadcastMatchWin(string n)
     {
-        using (MemoryStream ms = new MemoryStream())
-        using (BinaryWriter writer = new BinaryWriter(ms))
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
         {
-            writer.Write((byte)MessageType.WeaponStationData);
-            writer.Write(stationID);
-            writer.Write(stateCode);
+            w.Write((byte)MessageType.MatchWin);
+            w.Write(n);
 
-            byte[] data = ms.ToArray();
-
-            List<EndPoint> snapshot;
-            lock (clientsLock)
-            {
-                snapshot = new List<EndPoint>(connectedClients.Values);
-            }
-
-            Debug.Log($"[Server] Transmitiendo estado de WeaponStation {stationID} a {snapshot.Count} clientes. Estado: {stateCode}");
-
-            foreach (var ep in snapshot)
-            {
-                try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); }
-                catch (Exception e) { Debug.LogWarning("[Server] Error enviando WEAPON_STATION_DATA: " + e.Message); }
-            }
+            BroadcastData(m.ToArray());
         }
     }
+    void BroadcastMove(string k, Vector3 p)
+    {
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.Move);
+            w.Write(k);
+            w.Write(p.x);
+            w.Write(p.y);
+            w.Write(p.z);
 
-    void SendBinaryToClient(byte[] data, EndPoint remote)
+            BroadcastData(m.ToArray());
+        }
+    }
+    void BroadcastRotate(string k, Vector3 r)
+    {
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.Rotate);
+            w.Write(k);
+            w.Write(r.x);
+            w.Write(r.y);
+            w.Write(r.z);
+
+            BroadcastData(m.ToArray());
+        }
+    }
+    void BroadcastPlayerHealth(string k, float h)
+    {
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.PlayerData);
+            w.Write(k);
+            w.Write(h);
+
+            BroadcastData(m.ToArray());
+        }
+    }
+    void BroadcastWeaponChange(string k, int i)
+    {
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.WeaponChange);
+            w.Write(k);
+            w.Write(i);
+
+            BroadcastData(m.ToArray());
+        }
+    }
+    void BroadcastHealStationState(int id, int c)
+    {
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.HealStationData);
+            w.Write(id);
+            w.Write(c);
+
+            BroadcastData(m.ToArray());
+        }
+    }
+    void BroadcastWeaponStationState(int id, int c)
+    {
+        using (MemoryStream m = new MemoryStream())
+        using (BinaryWriter w = new BinaryWriter(m))
+        {
+            w.Write((byte)MessageType.WeaponStationData);
+            w.Write(id);
+            w.Write(c);
+
+            BroadcastData(m.ToArray());
+        }
+    }
+    void EndHealStationCooldown(int id)
+    {
+        lock (clientsLock)
+            healStationStates[id] = false;
+
+        BroadcastHealStationState(id, 0);
+    }
+
+    void EndWeaponStationCooldown(int id)
+    {
+        lock (clientsLock)
+            healStationStates[id] = false;
+
+        BroadcastWeaponStationState(id, 0);
+    }
+    void SendBinaryToClient(byte[] d, EndPoint r)
     {
         try
         {
-            serverSocket.SendTo(data, data.Length, SocketFlags.None, remote);
+            serverSocket.SendTo(d, d.Length, SocketFlags.None, r);
         }
-        catch (Exception e)
-        {
-            Debug.LogError("[Server] Error enviando a cliente: " + e.Message);
-        }
-    }
-
-    void RemoveClientByKey(string key)
-    {
-        lock (clientsLock)
-        {
-            connectedClients.Remove(key);
-            playerPositions.Remove(key); playerHealth.Remove(key);
-            playerRotations.Remove(key); playerWeapons.Remove(key);
-
-            playerNames.Remove(key);
-            playerReadyStatus.Remove(key);
-        }
-
-        BroadcastLobbyState();
-        CheckRoundWinCondition();
-
-        using (MemoryStream ms = new MemoryStream()) using (BinaryWriter writer = new BinaryWriter(ms))
-        {
-            writer.Write((byte)MessageType.Goodbye); writer.Write(key);
-            byte[] data = ms.ToArray();
-            List<EndPoint> snapshot; lock (clientsLock) snapshot = new List<EndPoint>(connectedClients.Values);
-            foreach (var ep in snapshot) try { serverSocket.SendTo(data, data.Length, SocketFlags.None, ep); } catch { }
-        }
-        Debug.Log($"[Server] Cliente {key} desconectado");
- 
+        catch { }
     }
     public void StopServer()
     {
         isRunning = false;
-        try { serverSocket?.Close(); } catch { }
-        if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
-        serverSocket = null;
-        Debug.Log("[Server] Stopped");
+
+        if (serverSocket != null)
+            serverSocket.Close();
     }
 
-    void OnDestroy()
+    void OnDestroy() => StopServer();
+
+    public int GetConnectedClientCount()
     {
-        isRunning = false;
-        try { serverSocket?.Close(); } catch { }
-        if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
+        lock (clientsLock)
+        {
+            return connectedProxies.Count;
+        }
     }
+
+    public System.Collections.Generic.List<ClientProxy> GetConnectedClients()
+    {
+        lock (clientsLock)
+        {
+            return new System.Collections.Generic.List<ClientProxy>(connectedProxies.Values);
+        }
+    }
+
 }
